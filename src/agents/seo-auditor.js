@@ -58,108 +58,66 @@ ${brandContext ? `## Known Brand Context\n${JSON.stringify(brandContext, null, 2
 ## CRITICAL RULES
 
 1. **ONLY report what you actually observe from crawl data.** Every claim must trace back to a specific tool call result.
-2. **Include the raw data** alongside your analysis. Show the actual title tag, actual meta description, actual heading text — not paraphrased versions.
-3. **Do NOT invent competitors.** Only list competitors that appear in actual web search results. If a search returns no relevant competitors, say "No direct competitors found in search results."
-4. **Do NOT invent metrics.** If you cannot measure something (like exact word count), say "estimated" or omit it. Never make up precise numbers.
-5. **Label uncertainty.** If something is your inference rather than observed data, prefix it with "[Inference]".
+2. **Include the raw data** alongside your analysis — exact title tags, meta descriptions, headings. Not paraphrased.
+3. **Do NOT invent competitors.** Only list competitors from actual search results.
+4. **Do NOT invent metrics.** If you can't measure it, say "estimated" or omit it.
+5. **NEVER write "(repeat for each page)" or any shortcut.** You must write the full analysis for EVERY page.
+6. **VERIFY your work.** After writing the report, count the pages in your output and compare to the page list. If any are missing, add them.
 
-## Audit Steps
+## Agentic Workflow — Plan, Execute, Verify
 
-### Step 1: Crawl Every Known Page
-Crawl each of these pages individually using **crawl_page**. These are derived from the project's view templates — this is the definitive page list:
-
+### PLAN: These are the pages you will audit
 ${derivePageUrls(siteUrl, config)}
 
-You MUST call crawl_page on EVERY URL above. Do NOT skip any. Do NOT write "(repeat for each page)" — actually crawl each one and record the data.
+Total expected: count the URLs above. Your final report MUST have this exact count of page analyses.
 
-### Step 2: Discover Additional Pages
-After crawling the known pages, use **crawl_site** with URL "${siteUrl}" and maxPages 20 to follow internal links and find any pages NOT in the list above (e.g., blog posts, landing pages, unlisted pages).
+### EXECUTE Phase 1: Crawl every page
+Call **crawl_page** on EVERY URL listed above. No exceptions. No skipping.
 
-For EACH page (from both steps), record from the crawl tool response:
-- Exact title tag text (meta.title)
-- Exact meta description (meta.description)
-- Exact canonical URL (meta.canonical)
-- Exact OG tags (meta.ogTitle, meta.ogDescription, meta.ogImage)
-- All headings (level and text)
-- Image count and how many are missing alt text
-- Internal link count and external link count
-- Body text length from the tool (bodyTextLength field)
-- Any JSON-LD structured data found
+### EXECUTE Phase 2: Discover additional pages
+Use **crawl_site** with URL "${siteUrl}" and maxPages 20 to find unlisted pages.
 
-### Step 3: Check Sitemap
-- Crawl the sitemap
-- Record total pages found
-- List all URLs from the sitemap
+### EXECUTE Phase 3: Check sitemap
+Use **crawl_sitemap** on ${siteUrl}.
 
-### Step 4: Competitive Search (actual search results only)
-- Search for 2-3 of our target keywords (e.g., "legal AI software", "on-premise AI law firm")
-- Record the ACTUAL search results returned — title, URL, snippet
-- Only name competitors that appear in these results
+### EXECUTE Phase 4: Competitive search
+Search for 2-3 target keywords. Record actual results only.
 
-## Output Format
+### EXECUTE Phase 5: Write the full report
+Save finding as "${todayStr()}-seo-audit.md".
 
-Save your audit as a finding with filename "${todayStr()}-seo-audit.md" containing:
-
-\`\`\`markdown
-# SEO Audit — ${siteName} — ${todayStr()}
-
-## Pages Crawled
-(list each URL you crawled)
-
-## Page-by-Page Analysis
+For EACH page, write this exact block (no shortcuts):
 
 ### [Page Name] — [URL]
-
 **Raw Data:**
-- Title: "[exact title from crawl]" (X chars)
-- Meta Description: "[exact description from crawl]" (X chars)
-- Canonical: [exact canonical URL]
-- H1: "[exact H1 text]"
-- All Headings: [list them with levels]
-- Images: X total, Y missing alt text
-- Internal Links: X | External Links: Y
-- Body Text Length: X chars (from crawl data)
-- OG Image: [present/missing]
-- JSON-LD: [present/missing, what type]
+- Title: "[exact from crawl]" (X chars)
+- Meta Description: "[exact from crawl]" (X chars)
+- Canonical: [exact URL]
+- H1: "[exact text]"
+- Headings: [list all with levels]
+- Images: X total, Y missing alt
+- Links: X internal, Y external
+- Body Length: X chars
+- OG Image: present/missing
+- JSON-LD: present/missing
 
-**Issues Found:**
-- [specific issue with specific fix]
+**Issues:**
+- [issue + fix]
 
-(repeat for each page)
+YOU MUST WRITE THIS BLOCK FOR EVERY SINGLE PAGE. Not 3 pages. Not 5 pages. ALL of them.
 
-## Sitemap Analysis
-- Sitemap URL: [actual URL]
-- Total pages indexed: [number]
-- Pages found: [list URLs]
-- Missing pages: [any important pages NOT in sitemap]
+After the page analyses, include:
+- Sitemap Analysis (URL, pages found, missing pages)
+- Competitive Search Results (exact queries and results)
+- Issues Summary (Critical, Warnings, Opportunities with evidence)
 
-## Competitive Search Results
+### VERIFY: Self-check before saving
+Before you call save_finding, count the "### [Page Name]" sections in your report.
+- Does the count match the number of pages you crawled?
+- Is every URL from the plan represented?
+- If ANY page is missing, add it NOW before saving.
 
-### Search: "[exact query used]"
-Results returned:
-1. [Title] — [URL] — "[snippet]"
-2. ...
-
-### Search: "[exact query used]"
-Results returned:
-1. ...
-
-**Competitive Observations:** (based ONLY on search results above)
-- ...
-
-## Issues Summary
-
-### Critical (fix now)
-- [ ] [Issue] — Evidence: [what crawl showed] — Fix: [specific action]
-
-### Warnings (fix this week)
-- [ ] [Issue] — Evidence: [what crawl showed] — Fix: [specific action]
-
-### Opportunities
-- [ ] [Opportunity] — Based on: [observed data or search results]
-\`\`\`
-
-Remember: if you didn't observe it in a tool call, don't report it.
+This verification step is mandatory. Do not save until all pages are accounted for.
 `;
 
 export async function runSEOAudit(llm, workspace, options = {}) {
