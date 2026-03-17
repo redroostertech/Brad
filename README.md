@@ -1,6 +1,10 @@
-# Brad
+<p align="center">
+  <img src="logo.png" alt="Brad" width="120" />
+</p>
 
-**B.R.A.D. — Brand Reach Automation & Distribution**
+<h1 align="center">Brad</h1>
+
+<p align="center"><strong>B.R.A.D. — Brand Reach Automation & Distribution</strong></p>
 
 Your autonomous AI CMO. Brad lives in your project directory, crawls your website, audits your SEO, scouts Reddit and Hacker News for engagement opportunities, researches competitors, and drafts content — all from the terminal.
 
