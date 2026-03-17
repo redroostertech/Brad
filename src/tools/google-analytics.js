@@ -148,8 +148,8 @@ async function fetchPerPageMetrics(client, propertyId, dateRange) {
     'totalUsers',
     'averageSessionDuration',
     'bounceRate',
-    'entrances',
-    'exitRate',
+    'sessions',
+    'engagedSessions',
   ];
 
   const rows = await runReport(client, propertyId, {
@@ -166,8 +166,8 @@ async function fetchPerPageMetrics(client, propertyId, dateRange) {
     uniqueUsers: Math.round(getMetric(row, metrics, 'totalUsers')),
     avgSessionDurationSec: round2(getMetric(row, metrics, 'averageSessionDuration')),
     bounceRate: round2(getMetric(row, metrics, 'bounceRate')),
-    entrances: Math.round(getMetric(row, metrics, 'entrances')),
-    exitRate: round2(getMetric(row, metrics, 'exitRate')),
+    sessions: Math.round(getMetric(row, metrics, 'sessions')),
+    engagedSessions: Math.round(getMetric(row, metrics, 'engagedSessions')),
   }));
 }
 
