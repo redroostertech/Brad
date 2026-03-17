@@ -265,12 +265,11 @@ export async function enrichWithAnalytics(pageResults, config, log) {
     fetchPromises.push(
       fetchSearchConsoleData(gscProperty, { credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS })
         .then(result => {
-          gscPages = result.pages ?? [];
-          // result.queries is expected to be an array of { pagePath, query, impressions, clicks, ctr, position }
-          // Group by pagePath for efficient per-page lookup.
+          gscPages = result?.perPageMetrics ?? [];
+          // result.lowHangingFruit has query-level data we can use for per-page lookup
           gscQueriesByPath = new Map();
-          for (const row of result.queries ?? []) {
-            const path = normalisePath(row.pagePath ?? row.url ?? '');
+          for (const row of result?.lowHangingFruit ?? []) {
+            const path = normalisePath(row.page ?? row.pagePath ?? row.url ?? '');
             if (!gscQueriesByPath.has(path)) {
               gscQueriesByPath.set(path, []);
             }
@@ -291,7 +290,7 @@ export async function enrichWithAnalytics(pageResults, config, log) {
     fetchPromises.push(
       fetchGA4Data(ga4PropertyId, { credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS })
         .then(result => {
-          ga4Pages = result.pages ?? [];
+          ga4Pages = result?.perPageMetrics ?? [];
           _log(`  GA4: received ${ga4Pages.length} page rows`);
         })
         .catch(err => {
