@@ -314,6 +314,21 @@ export async function enrichWithAnalytics(pageResults, config, log) {
 
   let enrichedCount = 0;
 
+  // Determine if the site uses a path prefix (e.g., /lana-ai/) on the production server.
+  // GA4 tracks the real server path, not the vanity domain path.
+  const siteConfig = config?.sites?.[0] ?? {};
+  const productionUrl = siteConfig.production || '';
+  let pathPrefix = '';
+  if (productionUrl) {
+    try {
+      const prodPath = new URL(productionUrl).pathname.replace(/\/$/, '');
+      if (prodPath && prodPath !== '/') pathPrefix = prodPath;
+    } catch { /* ignore */ }
+  }
+  if (pathPrefix) {
+    _log(`  Path prefix detected: ${pathPrefix} (GA4 paths will be matched with this prefix)`);
+  }
+
   const enriched = pageResults.map(page => {
     // Pages that errored during crawl pass through untouched.
     if (page.error) {
@@ -321,9 +336,11 @@ export async function enrichWithAnalytics(pageResults, config, log) {
     }
 
     const path = normalisePath(page.url);
+    // Try both: exact path AND prefixed path (for domain rewrites like lanaai.io → /lana-ai/*)
+    const prefixedPath = pathPrefix ? `${pathPrefix}${path === '/' ? '' : path}` || pathPrefix : null;
 
-    const gscRow = gscPageMap.get(path) ?? null;
-    const ga4Row = ga4PageMap.get(path) ?? null;
+    const gscRow = gscPageMap.get(path) ?? (prefixedPath ? gscPageMap.get(prefixedPath) : null);
+    const ga4Row = ga4PageMap.get(path) ?? (prefixedPath ? ga4PageMap.get(prefixedPath) : null);
 
     // Only attach the analytics property when at least one source is available.
     if (!gscRow && !ga4Row) {
