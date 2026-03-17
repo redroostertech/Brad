@@ -324,6 +324,45 @@ Update `.env.example`, `README.md`, and `brad help` output.
 
 ---
 
+## Branching Strategy
+
+```
+main              ← Production releases only (protected, 2 approvals)
+  └── development ← Integration branch (protected, 1 approval)
+        ├── feature/add-twitter-agent
+        ├── feature/ga4-integration
+        ├── fix/crawl-site-timeout
+        └── docs/update-readme
+```
+
+### Rules
+
+- **Never push directly to `main` or `development`** — always use pull requests
+- **Branch from `development`** for all work
+- **Name branches**: `feature/description`, `fix/description`, `docs/description`
+- **PR into `development`** — requires 1 approval
+- **PR from `development` into `main`** — requires 2 approvals (release only)
+- **Delete branches after merge**
+
+### Workflow
+
+```bash
+# Start new work
+git checkout development
+git pull
+git checkout -b feature/my-feature
+
+# Do your work, commit
+git add -A
+git commit -m "Add my feature"
+
+# Push and create PR
+git push -u origin feature/my-feature
+gh pr create --base development
+```
+
+---
+
 ## Pull Request Checklist
 
 - [ ] Code runs without errors (`node -c src/your-file.js`)
