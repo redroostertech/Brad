@@ -405,20 +405,12 @@ export async function fetchGA4Data(propertyId, options = {}) {
   }
 
   try {
-    // Instantiate the client — the SDK picks up credentials from the env var
-    // automatically, or we set the env var temporarily if a path was provided
-    // via config rather than the environment.
+    // Set the env var for the duration of the entire fetch operation.
+    // The SDK reads credentials lazily (on first API call, not at construction).
     const prevCredEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS;
     process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
 
     const client = new BetaAnalyticsDataClient();
-
-    // Restore env var to its original value after client is constructed
-    if (prevCredEnv === undefined) {
-      delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
-    } else {
-      process.env.GOOGLE_APPLICATION_CREDENTIALS = prevCredEnv;
-    }
 
     const days = options.days ?? 90;
     const dateRange = buildDateRange(days);
@@ -431,6 +423,13 @@ export async function fetchGA4Data(propertyId, options = {}) {
     ]);
 
     const engagementSignals = computeEngagementSignals(perPageMetrics, trafficSourcesPerPage);
+
+    // Restore env var now that all API calls are complete
+    if (prevCredEnv === undefined) {
+      delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    } else {
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = prevCredEnv;
+    }
 
     return {
       propertyId,
