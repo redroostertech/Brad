@@ -10,6 +10,7 @@ import { createBradAgent, runAgent } from '../core/agent.js';
 import { crawlPage, crawlSitemap, crawlSite } from '../tools/web-crawler.js';
 import { webSearch } from '../tools/search.js';
 import { createFileTools } from '../tools/file-ops.js';
+import { enrichWithAnalytics, formatAnalyticsForPrompt } from '../tools/analytics-enricher.js';
 
 function todayStr() {
   return new Date().toISOString().split('T')[0];
@@ -132,6 +133,8 @@ ${bodyPreview.substring(0, 1500)}
 - Primary keywords MISSING from body: [${keywordsMissing.join(', ') || 'all present'}]
 - Primary keywords in title: [${keywordsInTitle.join(', ') || 'NONE'}]
 - Primary keywords in H1: [${keywordsInH1.join(', ') || 'NONE'}]
+
+${pageData.analytics ? formatAnalyticsForPrompt(pageData.analytics) : '## Analytics Data\nNo analytics data available (GSC/GA4 not configured). Suggestions are based on crawl data only.'}
 
 ## Brand Context
 - Differentiators: ${differentiators.join(' | ')}
@@ -384,6 +387,10 @@ export async function runSEOAudit(llm, workspace, options = {}) {
 
   const pageResults = await Promise.all(pageUrls.map(crawlOnePage));
 
+  // ── Phase 1.5: Enrich with Google Analytics data ───────────
+  log('Phase 1.5: Enriching with analytics (GSC + GA4)...');
+  const enrichedPages = await enrichWithAnalytics(pageResults, config, log);
+
   // ── Phase 2+3: Sitemap + competitive search (parallel) ─────
   log('Phase 2+3: Sitemap check + competitive search (parallel)...');
 
@@ -440,8 +447,8 @@ export async function runSEOAudit(llm, workspace, options = {}) {
   const [sitemapData, competitiveData] = await Promise.all([sitemapPromise, competitivePromise]);
 
   // ── Phase 4: Analyze pages via LLM (parallel batches of 4) ─
-  const validPages = pageResults.filter(p => !p.error);
-  const errorPages = pageResults.filter(p => p.error);
+  const validPages = enrichedPages.filter(p => !p.error);
+  const errorPages = enrichedPages.filter(p => p.error);
   const allPageUrls = validPages.map(p => p.url);
   const BATCH_SIZE = 4;
 
@@ -498,8 +505,8 @@ export async function runSEOAudit(llm, workspace, options = {}) {
   const report = [
     `# SEO Audit — ${site.name} — ${todayStr()}`,
     '',
-    `## Pages Audited (${pageResults.length})`,
-    ...pageResults.map(p => `- ${p.url}${p.error ? ' ⚠ ' + p.error : ''}`),
+    `## Pages Audited (${enrichedPages.length})`,
+    ...enrichedPages.map(p => `- ${p.url}${p.error ? ' ⚠ ' + p.error : ''}${p.analytics?.gsc ? ` (${p.analytics.gsc.impressions} impressions, pos ${p.analytics.gsc.avgPosition?.toFixed(1)})` : ''}`),
     '',
     '## Page-by-Page Analysis',
     '',
@@ -516,7 +523,8 @@ export async function runSEOAudit(llm, workspace, options = {}) {
     action: 'seo_audit',
     site: site.url,
     date: todayStr(),
-    pagesAudited: pageResults.length,
+    pagesAudited: enrichedPages.length,
+    analyticsEnabled: enrichedPages.some(p => p.analytics?.gsc || p.analytics?.ga4),
     pagesAnalyzed: pageAnalyses.length,
   });
 
