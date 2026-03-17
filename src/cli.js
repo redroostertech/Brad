@@ -34,12 +34,57 @@ loadEnv();
 
 const VERSION = '0.1.0';
 
+/**
+ * Activity logger — timestamped console output
+ */
+function createLogger() {
+  return (msg) => {
+    const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+    console.log(chalk.gray(`  ${ts}`) + `  ${msg}`);
+  };
+}
+
+/**
+ * Double-ESC abort handler — enables raw mode on stdin,
+ * listens for two ESC presses within 500ms, exits on match.
+ * Returns a cleanup function to restore stdin.
+ */
+function enableAbort() {
+  if (!process.stdin.isTTY) return () => {};
+
+  let lastEsc = 0;
+  const handler = (key) => {
+    if (key[0] === 27) {
+      const now = Date.now();
+      if (now - lastEsc < 500) {
+        console.log(chalk.yellow('\n\n  Aborted.'));
+        process.stdin.setRawMode(false);
+        process.exit(0);
+      }
+      lastEsc = now;
+    }
+  };
+
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.on('data', handler);
+
+  return () => {
+    process.stdin.removeListener('data', handler);
+    process.stdin.setRawMode(false);
+    process.stdin.pause();
+  };
+}
+
 function banner(workspace) {
   const lines = [
     '',
-    chalk.bold.cyan('  ╔═══════════════════════════════════════════════════╗'),
-    chalk.bold.cyan('  ║') + chalk.bold.white('  B.R.A.D. — Brand Reach Automation & Distribution  ') + chalk.bold.cyan('║'),
-    chalk.bold.cyan('  ╚═══════════════════════════════════════════════════╝'),
+    chalk.red('  ██████  ') + chalk.yellow('██████  ') + chalk.red(' █████  ') + chalk.yellow('██████  '),
+    chalk.red('  ██   ██ ') + chalk.yellow('██   ██ ') + chalk.red('██   ██ ') + chalk.yellow('██   ██ '),
+    chalk.red('  ██████  ') + chalk.yellow('██████  ') + chalk.red('███████ ') + chalk.yellow('██   ██ '),
+    chalk.red('  ██   ██ ') + chalk.yellow('██   ██ ') + chalk.red('██   ██ ') + chalk.yellow('██   ██ '),
+    chalk.red('  ██████  ') + chalk.yellow('██   ██ ') + chalk.red('██   ██ ') + chalk.yellow('██████  '),
+    chalk.gray('  Brand Reach Automation & Distribution'),
   ];
 
   if (workspace) {
@@ -336,46 +381,16 @@ export function cli(argv) {
       console.log(chalk.bold.cyan('  Starting full initialization...'));
       console.log(chalk.gray('  Press ESC twice to abort.\n'));
 
-      // Double-ESC abort handler
-      let abortController = new AbortController();
-      let lastEsc = 0;
-      const originalRawMode = process.stdin.isRaw;
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
-        process.stdin.resume();
-        process.stdin.on('data', (key) => {
-          if (key[0] === 27) { // ESC
-            const now = Date.now();
-            if (now - lastEsc < 500) {
-              console.log(chalk.yellow('\n\n  Aborted by user.'));
-              console.log(chalk.gray('  Workspace exists — re-run "brad init" to resume.\n'));
-              process.stdin.setRawMode(false);
-              process.exit(0);
-            }
-            lastEsc = now;
-          }
-        });
-      }
-
-      // Activity log renderer
-      const logLine = (msg) => {
-        const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
-        console.log(chalk.gray(`  ${timestamp}`) + `  ${msg}`);
-      };
+      const cleanup = enableAbort();
+      const log = createLogger();
 
       try {
-        const result = await analyzeSite(llm, workspace, { log: logLine });
-
-        // Clean up stdin
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(false);
-          process.stdin.pause();
-        }
+        const result = await analyzeSite(llm, workspace, { log });
+        cleanup();
 
         console.log('');
         console.log(chalk.bold.green('  Initialization complete.'));
 
-        // Show what got configured
         const updatedConfig = await workspace.loadConfig();
         const brandCount = updatedConfig.brand?.differentiators?.length || 0;
         const keywordCount = (updatedConfig.brand?.keywords?.primary?.length || 0)
@@ -393,10 +408,7 @@ export function cli(argv) {
         console.log(chalk.gray('    brad          — Interactive mode'));
         console.log('');
       } catch (err) {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(false);
-          process.stdin.pause();
-        }
+        cleanup();
         console.log(chalk.red(`\n  Initialization failed: ${err.message}`));
         console.log(chalk.yellow('  Workspace exists — re-run "brad init" to resume.\n'));
       }
@@ -416,13 +428,19 @@ export function cli(argv) {
       const config = await workspace.loadConfig();
       const llm = createLLM({ provider: config.provider });
 
-      const spinner = ora({ text: 'Re-analyzing site...', indent: 2 }).start();
+      console.log(chalk.bold.cyan('\n  Re-analyzing site...'));
+      console.log(chalk.gray('  Press ESC twice to abort.\n'));
+
+      const cleanup = enableAbort();
+      const log = createLogger();
       try {
-        const result = await analyzeSite(llm, workspace);
-        spinner.succeed('Site analysis refreshed — brand context updated');
-        console.log('\n' + result.content + '\n');
+        const result = await analyzeSite(llm, workspace, { log });
+        cleanup();
+        console.log(chalk.bold.green('\n  Site analysis refreshed.\n'));
+        console.log(result.content + '\n');
       } catch (err) {
-        spinner.fail(`Analysis failed: ${err.message}`);
+        cleanup();
+        console.log(chalk.red(`\n  Analysis failed: ${err.message}\n`));
       }
     });
 
@@ -440,16 +458,18 @@ export function cli(argv) {
       const config = await workspace.loadConfig();
       const llm = createLLM({ provider: config.provider });
 
-      console.log(chalk.bold.cyan('\n  Running SEO audit...\n'));
-      const logLine = (msg) => {
-        const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-        console.log(chalk.gray(`  ${ts}`) + `  ${msg}`);
-      };
+      console.log(chalk.bold.cyan('\n  Running SEO audit...'));
+      console.log(chalk.gray('  Press ESC twice to abort.\n'));
+
+      const cleanup = enableAbort();
+      const log = createLogger();
       try {
-        const result = await runSEOAudit(llm, workspace, { log: logLine });
+        const result = await runSEOAudit(llm, workspace, { log });
+        cleanup();
         console.log(chalk.bold.green('\n  SEO audit complete.\n'));
         console.log(result.content + '\n');
       } catch (err) {
+        cleanup();
         console.log(chalk.red(`\n  Audit failed: ${err.message}\n`));
       }
     });
@@ -468,13 +488,19 @@ export function cli(argv) {
       const config = await workspace.loadConfig();
       const llm = createLLM({ provider: config.provider });
 
-      const spinner = ora({ text: 'Scouting Reddit...', indent: 2 }).start();
+      console.log(chalk.bold.cyan('\n  Scouting Reddit...'));
+      console.log(chalk.gray('  Press ESC twice to abort.\n'));
+
+      const cleanup = enableAbort();
+      const log = createLogger();
       try {
-        const result = await scoutReddit(llm, workspace);
-        spinner.succeed('Reddit scout complete');
-        console.log('\n' + result.content + '\n');
+        const result = await scoutReddit(llm, workspace, { log });
+        cleanup();
+        console.log(chalk.bold.green('\n  Reddit scout complete.\n'));
+        console.log(result.content + '\n');
       } catch (err) {
-        spinner.fail(`Scout failed: ${err.message}`);
+        cleanup();
+        console.log(chalk.red(`\n  Scout failed: ${err.message}\n`));
       }
     });
 
@@ -516,20 +542,19 @@ export function cli(argv) {
       }
 
       // Foreground mode with activity log
-      console.log(chalk.bold.cyan('\n  Running competitive analysis...\n'));
-      console.log(chalk.gray('  This takes 3-5 minutes — Brad will search for competitors,'));
-      console.log(chalk.gray('  crawl their sites, and compare positioning.\n'));
+      console.log(chalk.bold.cyan('\n  Running competitive analysis...'));
+      console.log(chalk.gray('  Press ESC twice to abort.\n'));
 
-      const logLine = (msg) => {
-        const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-        console.log(chalk.gray(`  ${ts}`) + `  ${msg}`);
-      };
+      const cleanup = enableAbort();
+      const log = createLogger();
 
       try {
-        const result = await runCompetitiveAnalysis(llm, workspace, { log: logLine });
+        const result = await runCompetitiveAnalysis(llm, workspace, { log });
+        cleanup();
         console.log(chalk.bold.green('\n  Competitive analysis complete.\n'));
         console.log(result.content + '\n');
       } catch (err) {
+        cleanup();
         console.log(chalk.red(`\n  Competitive analysis failed: ${err.message}\n`));
       }
     });

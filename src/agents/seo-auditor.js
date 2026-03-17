@@ -57,15 +57,17 @@ ${brandContext ? `## Known Brand Context\n${JSON.stringify(brandContext, null, 2
 
 ## Audit Steps
 
-### Step 1: Crawl the Entire Site
-Use the **crawl_site** tool with URL "${siteUrl}" and maxPages 20. This will automatically follow internal links and return SEO data for every page it finds.
+### Step 1: Crawl Every Known Page
+Crawl each of these pages individually using **crawl_page**. These are derived from the project's view templates — this is the definitive page list:
 
-**IMPORTANT — If crawl_site returns only 1-2 pages** (the site may use anchor links instead of page links), you MUST manually crawl individual pages using **crawl_page**. Derive URLs from these known page paths:
 ${derivePageUrls(siteUrl, config)}
 
-Crawl EVERY page in that list individually with crawl_page. Do NOT skip any. Do NOT write "(repeat for each page)" — actually do it.
+You MUST call crawl_page on EVERY URL above. Do NOT skip any. Do NOT write "(repeat for each page)" — actually crawl each one and record the data.
 
-For EACH page in the results, record from the tool response:
+### Step 2: Discover Additional Pages
+After crawling the known pages, use **crawl_site** with URL "${siteUrl}" and maxPages 20 to follow internal links and find any pages NOT in the list above (e.g., blog posts, landing pages, unlisted pages).
+
+For EACH page (from both steps), record from the crawl tool response:
 - Exact title tag text (meta.title)
 - Exact meta description (meta.description)
 - Exact canonical URL (meta.canonical)
@@ -76,12 +78,12 @@ For EACH page in the results, record from the tool response:
 - Body text length from the tool (bodyTextLength field)
 - Any JSON-LD structured data found
 
-### Step 2: Check Sitemap
+### Step 3: Check Sitemap
 - Crawl the sitemap
 - Record total pages found
 - List all URLs from the sitemap
 
-### Step 3: Competitive Search (actual search results only)
+### Step 4: Competitive Search (actual search results only)
 - Search for 2-3 of our target keywords (e.g., "legal AI software", "on-premise AI law firm")
 - Record the ACTUAL search results returned — title, URL, snippet
 - Only name competitors that appear in these results
