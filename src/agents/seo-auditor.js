@@ -39,49 +39,105 @@ function derivePageUrls(siteUrl, config) {
     ];
   }
 
-  const skipPages = ['404', '500', 'error', 'oauth-redirect', 'oauth-error', 'home-2', 'landing'];
+  const skipPages = ['404', '500', 'error', 'oauth-redirect', 'oauth-error', 'home-2', 'landing', 'estate-planning-bh'];
+
+  // Map EJS filenames to actual route paths where they differ
+  const routeOverrides = {
+    'privacy': 'privacy-policy',
+    'terms': 'terms-of-service',
+  };
 
   return pageFiles.map(f => {
     const pageName = f.split('/').pop().replace('.ejs', '').replace(/_/g, '-');
     if (skipPages.includes(pageName)) return null;
     if (pageName === 'home') return `${siteUrl}/`;
-    return `${siteUrl}/${pageName}`;
+    const routePath = routeOverrides[pageName] || pageName;
+    return `${siteUrl}/${routePath}`;
   }).filter(Boolean);
 }
 
 // ── Single-page analysis prompt ──────────────────────────────────
 
 const PAGE_ANALYSIS_PROMPT = (pageData, siteUrl, brandContext, config, allPageUrls) => {
-  const primaryKeywords = config?.brand?.keywords?.primary?.slice(0, 5).join(', ') || 'legal AI, on-premise AI, law firm AI';
-  const secondaryKeywords = config?.brand?.keywords?.secondary?.slice(0, 5).join(', ') || '';
+  const primaryKeywords = config?.brand?.keywords?.primary || [];
+  const secondaryKeywords = config?.brand?.keywords?.secondary || [];
+  const longTailKeywords = config?.brand?.keywords?.long_tail || [];
+  const differentiators = config?.brand?.differentiators || [];
+  const competitors = config?.brand?.competitors || [];
+  const bodyPreview = pageData.bodyTextPreview || '';
+
+  // Pre-compute keyword presence so we can tell the LLM exactly what's missing
+  const allKeywords = [...primaryKeywords, ...secondaryKeywords];
+  const bodyLower = bodyPreview.toLowerCase();
+  const titleLower = (pageData.meta?.title || '').toLowerCase();
+  const h1Text = (pageData.headings?.find(h => h.level === 'h1')?.text || '').toLowerCase();
+  const keywordsInBody = allKeywords.filter(k => bodyLower.includes(k.toLowerCase()));
+  const keywordsMissing = allKeywords.filter(k => !bodyLower.includes(k.toLowerCase()));
+  const keywordsInTitle = primaryKeywords.filter(k => titleLower.includes(k.toLowerCase()));
+  const keywordsInH1 = primaryKeywords.filter(k => h1Text.includes(k.toLowerCase()));
+
+  // Determine page type for schema recommendation
+  const urlPath = (pageData.url || '').split('/').pop() || 'home';
+  const schemaMap = {
+    '': 'Organization + WebSite',
+    'home': 'Organization + WebSite',
+    'about': 'Organization + AboutPage',
+    'contact': 'ContactPage',
+    'demo': 'Product + Action (ScheduleAction)',
+    'features': 'SoftwareApplication + ItemList',
+    'product': 'SoftwareApplication',
+    'security': 'WebPage + FAQPage (if Q&A present)',
+    'edge': 'Product (with offers/pricing)',
+    'professional': 'Product (with offers/pricing)',
+    'enterprise': 'Product (with offers/pricing)',
+    'automations': 'Service',
+    'privacy-policy': 'WebPage',
+    'terms-of-service': 'WebPage',
+  };
+  const recommendedSchema = schemaMap[urlPath] || 'WebPage';
 
   return `
-Analyze this SINGLE page for SEO. You are given the raw crawl data below. Write a thorough, specific analysis.
+You are an expert SEO consultant analyzing a single page. Be SPECIFIC to THIS page — no generic advice.
 
-## Page Data (from crawl)
-\`\`\`json
-${JSON.stringify(pageData, null, 2)}
-\`\`\`
+## Page Crawl Data
+URL: ${pageData.url}
+Title: "${pageData.meta?.title}" (${pageData.meta?.title?.length || 0} chars)
+Description: "${pageData.meta?.description}" (${pageData.meta?.description?.length || 0} chars)
+Canonical: ${pageData.meta?.canonical || 'missing'}
+H1: "${pageData.headings?.find(h => h.level === 'h1')?.text || 'missing'}"
+Headings: ${JSON.stringify(pageData.headings?.map(h => h.level + ': ' + h.text) || [])}
+Images: ${pageData.images?.total || 0} total, ${pageData.images?.missingAlt || 0} missing alt
+Links: ${pageData.links?.internal || 0} internal, ${pageData.links?.external || 0} external
+Body Length: ${pageData.bodyTextLength || 0} chars
+OG Image: ${pageData.meta?.ogImage ? 'present' : 'missing'}
+JSON-LD: ${pageData.jsonLd?.length > 0 ? JSON.stringify(pageData.jsonLd) : 'missing'}
 
-## Brand Keywords to Check For
-- Primary: ${primaryKeywords}
-- Secondary: ${secondaryKeywords}
+## Body Text Preview (first 1500 chars)
+${bodyPreview.substring(0, 1500)}
 
-## Other Pages on This Site (for internal linking analysis)
+## Pre-Computed Keyword Analysis
+- Primary keywords IN body: [${keywordsInBody.join(', ') || 'NONE'}]
+- Primary keywords MISSING from body: [${keywordsMissing.join(', ') || 'all present'}]
+- Primary keywords in title: [${keywordsInTitle.join(', ') || 'NONE'}]
+- Primary keywords in H1: [${keywordsInH1.join(', ') || 'NONE'}]
+
+## Brand Context
+- Differentiators: ${differentiators.join(' | ')}
+- Known competitors: ${competitors.join(', ')}
+- Recommended JSON-LD schema for this page: ${recommendedSchema}
+
+## All Site Pages (for internal linking)
 ${allPageUrls.map(u => `- ${u}`).join('\n')}
 
-## Write Your Analysis
+## OUTPUT FORMAT — Write ONLY this block:
 
-Output ONLY the markdown block below, nothing else. No preamble, no summary after.
-
-### ${pageData.meta?.title?.split(' - ')[0]?.split(' | ')[0] || 'Page'} — ${pageData.url || pageData.meta?.canonical || 'unknown'}
+### ${pageData.meta?.title?.split(' - ')[0]?.split(' | ')[0] || 'Page'} — ${pageData.url}
 
 **Raw Data:**
 - Title: "${pageData.meta?.title || 'missing'}" (${pageData.meta?.title?.length || 0} chars)
 - Meta Description: "${pageData.meta?.description || 'missing'}" (${pageData.meta?.description?.length || 0} chars)
 - Canonical: ${pageData.meta?.canonical || 'missing'}
 - H1: "${pageData.headings?.find(h => h.level === 'h1')?.text || 'missing'}"
-- Headings: ${JSON.stringify(pageData.headings?.map(h => h.level + ': ' + h.text) || [])}
 - Images: ${pageData.images?.total || 0} total, ${pageData.images?.missingAlt || 0} missing alt
 - Links: ${pageData.links?.internal || 0} internal, ${pageData.links?.external || 0} external
 - Body Length: ${pageData.bodyTextLength || 0} chars
@@ -89,27 +145,49 @@ Output ONLY the markdown block below, nothing else. No preamble, no summary afte
 - JSON-LD: ${pageData.jsonLd?.length > 0 ? 'present' : 'missing'}
 
 **Title Tag Analysis:**
-[Analyze: Is length within 50-60 chars? Does it contain primary keywords (${primaryKeywords})? Would a lawyer click this in SERPs? Is the brand positioned correctly? If weak, suggest a specific rewrite.]
+- Current: "${pageData.meta?.title}" (${pageData.meta?.title?.length || 0} chars)
+- [Is it 50-60 chars? If over, what text gets cut off in Google results?]
+- [Which primary keywords are present/missing? Be specific: "Contains 'law firms' but missing 'legal AI software' and 'on-premise AI'"]
+- [Would a managing partner at a mid-size firm click this? Why or why not?]
+- Suggested rewrite: "[Provide a specific rewrite that's 50-60 chars, includes a primary keyword, and is compelling]"
 
 **Meta Description Analysis:**
-[Analyze: Is length 150-160 chars? Does it have a call to action? Does it include keywords naturally? Suggest a specific rewrite if it can be improved.]
+- Current: "${pageData.meta?.description}" (${pageData.meta?.description?.length || 0} chars)
+- [Is it 150-160 chars? What gets truncated?]
+- [Does it answer "why should I click?" — is there a benefit, stat, or CTA?]
+- [Which keywords are naturally included vs missing?]
+- Suggested rewrite: "[Provide a specific rewrite with CTA, primary keyword, and benefit — 150-160 chars]"
 
-**Heading Structure Analysis:**
-[Analyze: Exactly one H1? Does H1 contain a keyword? Is hierarchy clean (H1→H2→H3, no skips)? Are H2s clear content sections? Any headings used for styling instead of structure?]
+**Heading Structure:**
+- H1: "${pageData.headings?.find(h => h.level === 'h1')?.text || 'missing'}"
+- [Does H1 match search intent for this page? What would someone Google to find this page?]
+- [Is the hierarchy clean? List any skips (e.g., "jumps from H2 to H4 at 'Results:' — should be H3")]
+- [Do H2s form a logical table of contents? Would a scan-reader understand the page structure?]
+- [Specific fix: quote the problematic heading and suggest the replacement]
 
-**Content Assessment:**
-[Analyze: Is body text substantive (>1000 chars) or thin? Are target keywords present? What topics should this page cover that it doesn't? How does it compare to what competitors likely cover?]
+**Keyword Coverage:**
+- Found in body: ${keywordsInBody.join(', ') || 'NONE'}
+- Missing from body: ${keywordsMissing.join(', ') || 'all present'}
+- [For each missing keyword, suggest WHERE in the body text it could be naturally added — reference a specific heading section]
+- [Are there long-tail phrases from this list that this page should target? ${longTailKeywords.join(', ')}]
+- [What topic does this page NOT cover that a competitor's equivalent page would? Be specific.]
 
-**Internal Linking:**
-[Analyze: Is the page well-connected? Which OTHER pages on the site (see list above) should this page link to but doesn't? Is anchor text descriptive?]
+**Internal Linking Assessment:**
+- This page links to ${pageData.links?.internal || 0} internal pages
+- [List 2-3 specific pages from the site that this page SHOULD link to but doesn't, and WHERE in the content the link should go]
+- [Example: "The section 'Types of Automations' should link to /features with anchor text 'Lana AI features' — currently no cross-reference exists"]
+- [Does this page link to the /demo or /contact conversion pages? If not, where should a CTA link go?]
 
-**Technical Issues:**
-[Analyze: Does canonical match expected URL (watch www vs non-www)? OG tags complete? What JSON-LD schema type should this page have? Any markup issues?]
+**Technical SEO:**
+- Canonical: ${pageData.meta?.canonical || 'not set'} ${pageData.meta?.canonical && pageData.meta.canonical.includes('www.') && !pageData.url.includes('www.') ? '⚠ WWW MISMATCH — canonical uses www but site serves without www' : ''}
+- OG tags: ${pageData.meta?.ogTitle ? 'title ✓' : 'title ✗'} ${pageData.meta?.ogDescription ? 'desc ✓' : 'desc ✗'} ${pageData.meta?.ogImage ? 'image ✓' : 'image ✗'}
+- JSON-LD: ${pageData.jsonLd?.length > 0 ? 'present' : `MISSING — should have: ${recommendedSchema}`}
+- [Any other technical issues visible in the markup?]
 
-**Specific Suggestions:**
-1. [Actionable suggestion — explain WHY and expected IMPACT]
-2. [Another — WHY and IMPACT]
-3. [Another — WHY and IMPACT]
+**Page-Specific Suggestions:**
+1. **[Specific action]** — Why: [explain the SEO impact with specifics, e.g., "Pages with FAQ schema see 2-3x more SERP real estate"]. Impact: [what metric improves]. Implementation: [exact steps].
+2. **[Specific action]** — Why: [specifics]. Impact: [metric]. Implementation: [steps].
+3. **[Specific action]** — Why: [specifics]. Impact: [metric]. Implementation: [steps].
 
 ---
 `;
@@ -117,11 +195,15 @@ Output ONLY the markdown block below, nothing else. No preamble, no summary afte
 
 // ── Summary prompt (cross-site issues + action plan) ─────────────
 
-const SUMMARY_PROMPT = (siteName, pageAnalyses, sitemapData, competitiveData) => `
-You have the individual page analyses and supporting data below. Write the final summary sections of the SEO audit.
+const SUMMARY_PROMPT = (siteName, pageAnalyses, sitemapData, competitiveData, config) => {
+  const differentiators = config?.brand?.differentiators || [];
+  const competitors = config?.brand?.competitors || [];
 
-## Individual Page Analyses Already Written
-${pageAnalyses.length} pages analyzed.
+  return `
+You are writing the summary sections of an SEO audit for ${siteName}. You have all the individual page analyses already written. Now synthesize the cross-cutting insights.
+
+## Individual Page Analyses (${pageAnalyses.length} pages)
+${pageAnalyses.join('\n\n').substring(0, 8000)}
 
 ## Sitemap Data
 ${sitemapData}
@@ -129,30 +211,71 @@ ${sitemapData}
 ## Competitive Search Data
 ${competitiveData}
 
-## Write These Sections
+## Brand Differentiators (for competitive positioning)
+${differentiators.map(d => `- ${d}`).join('\n')}
 
-Output ONLY the markdown below:
+## Known Competitors
+${competitors.join(', ') || 'None specified'}
+
+## OUTPUT — Write these sections:
 
 ## Sitemap Analysis
-[Analyze the sitemap data: URL, pages found, missing pages, domain mismatch issues]
+- What sitemap URL was found?
+- How many pages are indexed?
+- Are there domain mismatches (e.g., sitemap serves URLs for a different domain)?
+- Which important pages are MISSING from the sitemap?
+- Specific fix with implementation steps
 
-## Competitive Search Results
-[For each search query, list the actual results. What competitors are doing that we aren't.]
+## Competitive Landscape
+For each search performed, list the top results and analyze:
+- Who dominates the first page for each keyword?
+- What content format do top results use (listicles, guides, comparison pages)?
+- What keywords/topics do competitors cover that ${siteName} doesn't?
+- Where does ${siteName} have an advantage that competitors don't emphasize?
+- Specific content pieces ${siteName} should create to compete
 
 ## Cross-Site Issues
-[Patterns across multiple pages — e.g., "JSON-LD missing on all pages" is ONE issue here, not repeated per page]
+Aggregate patterns found across all page analyses. For each issue:
+- **Issue**: [what's wrong]
+- **Scope**: [how many pages / which pages]
+- **SEO Impact**: [specific impact — e.g., "Without JSON-LD, pages can't appear as rich results, losing ~30% potential SERP real estate"]
+- **Fix**: [exact implementation steps]
+
+List at least 5 cross-site issues. Common ones to check:
+- JSON-LD missing across pages
+- www vs non-www canonical mismatches
+- Thin content pages
+- Missing keywords in titles/H1s
+- Heading hierarchy violations
+- Missing internal links between related pages
+- No conversion CTAs on informational pages
 
 ## Priority Action Plan
 
-### Critical (fix this week)
-- [ ] [Issue] — **Why it matters:** [SEO impact explanation] — **Fix:** [specific steps] — **Pages affected:** [list]
+### Critical (fix this week) — list 3-5 items
+Each item:
+- [ ] **[Action]**
+  - **Why:** [Specific SEO impact with data if possible — e.g., "canonical mismatch causes Google to split page authority between two URLs, effectively halving ranking power"]
+  - **Fix:** [Step-by-step implementation — be specific enough that a developer can execute without further guidance]
+  - **Pages:** [list affected pages]
+  - **Estimated effort:** [quick/medium/significant]
 
-### Important (fix this month)
-- [ ] [Issue] — **Why it matters:** [explanation] — **Fix:** [steps] — **Pages affected:** [list]
+### Important (fix this month) — list 3-5 items
+Same format as above.
 
-### Opportunities (plan for next quarter)
-- [ ] [Opportunity] — **Why it matters:** [explanation] — **How:** [approach] — **Expected impact:** [what improves]
+### Quick Wins (< 1 hour each) — list 3-5 items
+- [ ] **[Action]** — [one-line description] — Pages: [list]
+
+### Strategic Opportunities (next quarter) — list 3-5 items
+- [ ] **[Opportunity]**
+  - **Why:** [market/competitive context]
+  - **Approach:** [what to create or change]
+  - **Expected impact:** [what metrics improve and by approximately how much]
+
+### Content Gaps to Fill — list 3-5 content pieces
+- [ ] **[Title of content piece]** — Target keyword: "[keyword]" — Format: [blog/landing page/guide] — Why: [competitive opportunity or user intent gap]
 `;
+};
 
 // ── Main audit runner ────────────────────────────────────────────
 
@@ -332,7 +455,7 @@ export async function runSEOAudit(llm, workspace, options = {}) {
   try {
     const result = await llm.invoke([
       { role: 'system', content: 'You are an expert SEO auditor. Output only the markdown sections requested.' },
-      { role: 'user', content: SUMMARY_PROMPT(site.name, pageAnalyses, sitemapData, competitiveData) },
+      { role: 'user', content: SUMMARY_PROMPT(site.name, pageAnalyses, sitemapData, competitiveData, config) },
     ]);
     summary = typeof result.content === 'string' ? result.content : result.content?.[0]?.text || '';
   } catch (err) {
