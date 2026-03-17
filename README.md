@@ -1,8 +1,8 @@
-# B.R.A.D.
+# Brad
 
-**Brand Reach Automation & Distribution**
+**B.R.A.D. — Brand Reach Automation & Distribution**
 
-Your autonomous AI Chief Marketing Officer. Brad lives in your project directory, crawls your website, audits your SEO, scouts Reddit and Hacker News for engagement opportunities, researches competitors, and drafts content — all from the terminal.
+Your autonomous AI CMO. Brad lives in your project directory, crawls your website, audits your SEO, scouts Reddit and Hacker News for engagement opportunities, researches competitors, and drafts content — all from the terminal.
 
 ---
 
@@ -13,7 +13,17 @@ Your autonomous AI Chief Marketing Officer. Brad lives in your project directory
 - **Node.js** 20+
 - **An LLM API key** — OpenAI, Anthropic, or a local LANA/Ollama instance
 
-### From Source
+### Quick Install
+
+```bash
+git clone https://github.com/redroostertechnologies/brad.git
+cd brad
+./install.sh
+```
+
+The install script checks prerequisites, installs dependencies, and links `brad` as a global command.
+
+### Manual Install
 
 ```bash
 git clone https://github.com/redroostertechnologies/brad.git
@@ -22,147 +32,272 @@ npm install
 npm link
 ```
 
-This installs `brad` as a global command. Verify:
+Verify:
 
 ```bash
 brad --version
 ```
 
-### From npm (coming soon)
+### Update
 
 ```bash
-npm install -g @redrooster/brad
+brad update
 ```
+
+Fetches the latest version, installs new dependencies, and re-links the command. If you have local changes, Brad will tell you how to resolve them.
 
 ---
 
 ## Quick Start
 
-### 1. Initialize in your project
+### 1. Set your API key
+
+```bash
+export OPENAI_API_KEY=sk-your-key
+```
+
+### 2. Initialize in your project
 
 ```bash
 cd ~/your-project
 brad init --site https://yoursite.com --name "Your Product"
 ```
 
-Brad will:
-- Create a `.brad/` workspace in your project
-- Scan your project for relevant files, analytics IDs, docs, and lead data
-- Crawl your live website (follows all internal links)
-- Search the web for your brand and competitors
-- Build the complete config — brand voice, keywords, platforms, everything
+Brad will scan your project, crawl your live website, search for competitors, and build the complete config automatically.
 
-#### Focus on specific directories
-
-If your project is large or multi-product, tell Brad where to look:
+### 3. Run commands
 
 ```bash
-brad init --site https://yoursite.com --name "Your Product" \
-  --focus "views/your-product,routes/your-product.js,docs/seo,data"
+brad audit       # SEO audit
+brad compete     # Competitive analysis
+brad scout       # Reddit opportunities
+brad             # Interactive mode
 ```
 
-#### Choose your LLM provider
+---
+
+## Setup Script
+
+For a guided setup that includes installing the Claude Code skill:
 
 ```bash
-# OpenAI (default)
-export OPENAI_API_KEY=sk-your-key
-brad init --site https://yoursite.com --name "Your Product"
+# From Brad's install directory
+./setup.sh --site https://yoursite.com --name "Your Product"
 
-# Anthropic
-export ANTHROPIC_API_KEY=sk-ant-your-key
-brad init --site https://yoursite.com --name "Your Product" --provider anthropic
+# With options
+./setup.sh --site https://yoursite.com --name "Your Product" \
+  --provider anthropic \
+  --focus "views/my-product,docs/seo,data" \
+  --local http://localhost:3000
 
-# Local LANA-AI server
-brad init --site https://yoursite.com --name "Your Product" --provider lana
-
-# Local Ollama
-brad init --site https://yoursite.com --name "Your Product" --provider ollama
+# Install Claude Code skill only
+./setup.sh --skill
 ```
 
-### 2. Run an SEO audit
+### Setup Script Flags
 
-```bash
-brad audit
-```
-
-Crawls every page on your site, checks meta tags, headings, content depth, keyword presence, and competitor rankings. Saves a detailed report to `.brad/findings/`.
-
-### 3. Scout social platforms
-
-```bash
-brad scout
-```
-
-Searches Reddit for relevant discussions, drafts authentic replies that drive traffic without being promotional.
-
-### 4. Run competitive analysis
-
-```bash
-brad compete         # Foreground with live activity log
-brad compete --bg    # Background — check findings later
-```
-
-Searches for your keywords, discovers competitors, crawls their sites, compares positioning, and produces a strategic report.
-
-### 5. Interactive mode
-
-```bash
-brad
-```
-
-Ask Brad anything — he has access to your site crawler, web search, and project files.
+| Flag | Description |
+|------|-------------|
+| `--site <url>` | Your website URL (required) |
+| `--name <name>` | Product/company name (required) |
+| `--provider <name>` | LLM provider (default: openai) |
+| `--focus <paths>` | Comma-separated paths to focus on |
+| `--local <url>` | Local dev URL |
+| `--skill` | Install Claude Code skill only |
 
 ---
 
 ## Commands
 
 ### Setup
-| Command | Description |
-|---------|-------------|
-| `brad init --site <url> --name <name>` | Initialize workspace and build config |
 
-Options: `--provider`, `--local`, `--focus`, `--skip-analysis`
+#### `brad init`
 
-### Analysis
-| Command | Description |
-|---------|-------------|
-| `brad analyze` | Re-crawl site and refresh brand context |
-| `brad audit` | Full SEO audit with page-by-page breakdown |
-| `brad compete` | Deep competitive analysis (`--bg` for background) |
-| `brad scout` | Scout Reddit for engagement opportunities |
+Initialize Brad workspace and build the full config.
 
-### View Results
-| Command | Description |
-|---------|-------------|
-| `brad config` | Show current configuration |
-| `brad findings` | List all saved findings |
-| `brad read <file>` | Read a specific finding |
-| `brad status` | Show workspace overview |
+```bash
+brad init --site <url> --name <name> [options]
+```
 
-### Maintenance
-| Command | Description |
-|---------|-------------|
-| `brad cleanse` | Remove all Brad data from project (requires confirmation) |
-| `brad help` | Show all commands |
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--site <url>` | `-s` | Website URL to crawl and analyze | Required |
+| `--name <name>` | `-n` | Product or company name | `"My Product"` |
+| `--provider <name>` | `-p` | LLM provider: `openai`, `anthropic`, `lana`, `ollama` | `openai` |
+| `--local <url>` | `-l` | Local development URL | None |
+| `--focus <paths>` | `-f` | Comma-separated directories/files to scan | Full project |
+| `--ga4 <id>` | | Google Analytics 4 property ID | Auto-detected from .env |
+| `--skip-analysis` | | Create workspace only, skip LLM analysis | `false` |
+
+**What init does:**
+1. Creates `.brad/` workspace directory
+2. Scans `.env` files for analytics IDs
+3. Walks focus paths for templates, docs, data files
+4. Crawls your live website (follows internal links)
+5. Searches the web for brand and competitors
+6. Builds `config.json` (brand, keywords, platforms, leads)
+7. Saves `brand-context.json` for agent system prompts
+
+**Focus paths** — For large or multi-product repos, tell Brad where to look:
+
+```bash
+brad init --site https://lanaai.io --name "Lana AI" \
+  --focus "views/lana-ai,routes/lana-ai.js,docs/seo,data"
+```
+
+Brad will only scan those directories instead of the entire project.
 
 ---
 
-## Claude Code Skill (`/brad`)
+### Analysis
 
-Brad includes an optional Claude Code skill that scans your repo for deeper config enrichment. Claude Code is better at reading project files (templates, routes, docs) while Brad is better at crawling live sites and searching the web.
+#### `brad analyze`
 
-### Install the skill
+Re-crawl your website and refresh the brand context. Use after major site changes.
 
-Copy the skill directory into your project:
+```bash
+brad analyze
+```
+
+#### `brad audit`
+
+Full SEO audit with page-by-page breakdown. Crawls every page, checks meta tags, headings, content depth, keywords, and competitor rankings.
+
+```bash
+brad audit
+```
+
+Results saved to `.brad/findings/YYYY-MM-DD-seo-audit.md`.
+
+#### `brad compete`
+
+Deep competitive analysis. Searches for your keywords, discovers competitors, crawls their sites, compares positioning, and produces a strategic report.
+
+```bash
+brad compete           # Foreground with live activity log
+brad compete --bg      # Run in background
+```
+
+| Flag | Description |
+|------|-------------|
+| `--bg` | Run in background (detached process) |
+
+Results saved to `.brad/findings/YYYY-MM-DD-competitive-analysis.md`.
+
+#### `brad scout`
+
+Scout Reddit for relevant discussions and draft authentic engagement replies.
+
+```bash
+brad scout
+```
+
+Results saved to `.brad/findings/` and `.brad/content/reddit/`.
+
+---
+
+### View Results
+
+#### `brad config`
+
+Display the current workspace configuration.
+
+```bash
+brad config
+```
+
+#### `brad findings`
+
+List all saved findings and reports.
+
+```bash
+brad findings
+```
+
+#### `brad read <filename>`
+
+Read a specific finding in full.
+
+```bash
+brad read 2026-03-17-seo-audit.md
+```
+
+#### `brad status`
+
+Show workspace overview — site, provider, brand context status, findings count.
+
+```bash
+brad status
+```
+
+---
+
+### Maintenance
+
+#### `brad cleanse`
+
+Remove all Brad data (`.brad/`) from the current project. Requires typing `yes` to confirm. No project files are touched.
+
+```bash
+brad cleanse
+```
+
+#### `brad update`
+
+Pull the latest Brad version, install dependencies, and re-link the global command.
+
+```bash
+brad update
+```
+
+#### `brad help`
+
+Show all commands with descriptions.
+
+```bash
+brad help
+```
+
+---
+
+### Interactive Mode
+
+Launch Brad's interactive REPL. All commands above work inside interactive mode, plus you can ask Brad anything in natural language.
+
+```bash
+brad
+```
+
+```
+  brad> What's our Reddit situation?
+  brad> audit
+  brad> Read me the latest finding
+  brad> What keywords should we target for estate planning lawyers?
+```
+
+---
+
+## Claude Code Skill
+
+Brad includes a `/brad` skill for Claude Code that scans your repo for deeper config enrichment. Claude Code is better at reading project internals (templates, routes, architecture) while Brad is better at crawling live sites and searching the web.
+
+### Install the Skill
+
+**Option A:** Use the setup script:
+
+```bash
+cd ~/your-project
+/path/to/brad/setup.sh --skill
+```
+
+**Option B:** Copy manually:
 
 ```bash
 mkdir -p .claude/skills/brad
 cp /path/to/brad/skill/SKILL.md .claude/skills/brad/SKILL.md
 ```
 
-Or create `.claude/skills/brad/SKILL.md` in your project with the contents from [skill/SKILL.md](skill/SKILL.md).
-
-### Use the skill
+### Use the Skill
 
 In Claude Code, inside your project:
 
@@ -172,13 +307,57 @@ In Claude Code, inside your project:
 /brad show      # Display current config summary
 ```
 
-The skill reads your env files, view templates, routes, docs, and data files to build a richer config than Brad's CLI can produce on its own.
-
 ---
 
 ## Configuration
 
-Brad stores its workspace in `.brad/` inside your project:
+### Environment Variables
+
+#### LLM Providers
+
+| Variable | Required For | Default |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | `--provider openai` | None (required) |
+| `OPENAI_MODEL` | Override OpenAI model | `gpt-4o` |
+| `ANTHROPIC_API_KEY` | `--provider anthropic` | None (required) |
+| `ANTHROPIC_MODEL` | Override Anthropic model | `claude-sonnet-4-20250514` |
+| `LANA_API_URL` | `--provider lana` | `http://localhost:8080/api/v1` |
+| `LANA_API_TOKEN` | `--provider lana` | `local` |
+| `LANA_MODEL` | Override LANA model | `lana-default` |
+| `OLLAMA_URL` | `--provider ollama` | `http://localhost:11434` |
+| `OLLAMA_MODEL` | Override Ollama model | `llama3.1:8b` |
+
+#### Agent Behavior
+
+| Variable | Description | Default |
+|----------|------------|---------|
+| `BRAD_LLM_PROVIDER` | Default LLM provider | `openai` |
+| `BRAD_APPROVAL_MODE` | `require` or `auto` | `require` |
+| `BRAD_LOG_LEVEL` | `silent`, `normal`, `verbose` | `normal` |
+
+#### Platform APIs (for future posting)
+
+| Variable | Description |
+|----------|-------------|
+| `REDDIT_CLIENT_ID` | Reddit OAuth app ID |
+| `REDDIT_CLIENT_SECRET` | Reddit OAuth secret |
+| `REDDIT_USERNAME` | Reddit account |
+| `REDDIT_PASSWORD` | Reddit password |
+| `TWITTER_API_KEY` | Twitter/X API key |
+| `TWITTER_API_SECRET` | Twitter/X API secret |
+| `TWITTER_ACCESS_TOKEN` | Twitter/X OAuth token |
+| `TWITTER_ACCESS_SECRET` | Twitter/X OAuth secret |
+
+### LLM Providers
+
+| Provider | Model | Cost | Best For |
+|----------|-------|------|----------|
+| `openai` | GPT-4o | ~$0.01/audit | Best overall quality |
+| `anthropic` | Claude Sonnet | ~$0.01/audit | Strong reasoning |
+| `lana` | Local (llama.cpp) | Free | On-premises, private |
+| `ollama` | Local (any GGUF) | Free | Development, testing |
+
+### Workspace Structure
 
 ```
 .brad/
@@ -194,40 +373,24 @@ Brad stores its workspace in `.brad/` inside your project:
 └── history/             # Action log (JSONL)
 ```
 
-### Key config sections
+### Config Sections
 
-| Section | What Brad uses it for |
+| Section | What Brad Uses It For |
 |---------|----------------------|
-| `sites` | URLs to crawl, analytics IDs |
+| `sites` | URLs to crawl, local dev URL, analytics IDs |
 | `focus` | Project paths to scan (templates, routes, docs) |
 | `context_files` | Files Brad reads for deep product understanding |
-| `brand.keywords` | Primary, secondary, and long-tail SEO targets |
+| `brand.voice` | Tone and style for generated content |
+| `brand.audience` | Target audience for content strategy |
+| `brand.keywords` | Primary, secondary, long-tail SEO targets |
 | `brand.competitors` | Companies to track in competitive analysis |
 | `brand.differentiators` | Unique selling points woven into content |
 | `platforms.reddit` | Subreddits to monitor |
 | `platforms.hackernews` | Keywords to watch on HN |
+| `platforms.twitter` | Handle and hashtags |
 | `lead_data` | Lead source files, target markets, verticals |
-
-### Environment variables
-
-| Variable | Required for |
-|----------|-------------|
-| `ANTHROPIC_API_KEY` | `--provider anthropic` |
-| `BRAD_LLM_PROVIDER` | Default provider override |
-| `OPENAI_API_KEY` | `--provider openai` (default) |
-
----
-
-## LLM Providers
-
-Brad supports four LLM backends. Switch with `--provider` on init or set `BRAD_LLM_PROVIDER`:
-
-| Provider | Model | Cost | Best for |
-|----------|-------|------|----------|
-| `openai` | GPT-4o | ~$0.01/audit | Best overall quality |
-| `anthropic` | Claude Sonnet | ~$0.01/audit | Strong reasoning |
-| `lana` | Local (llama.cpp) | Free | On-premises, private |
-| `ollama` | Local (any GGUF) | Free | Development, testing |
+| `schedule` | Cron schedules for audit, engage, content |
+| `approval` | `require` (review before posting) or `auto` |
 
 ---
 
@@ -250,8 +413,8 @@ brad init
   │
   └── Phase 3: Config Builder
       ├── Merges scanner findings + LLM output
-      ├── Saves config.json (brand, keywords, platforms, leads)
-      └── Saves brand-context.json (for system prompts)
+      ├── Saves config.json
+      └── Saves brand-context.json
 ```
 
 ---
@@ -261,6 +424,9 @@ brad init
 ```
 brad/
 ├── bin/brad.js                     # CLI entry point
+├── install.sh                      # Install script
+├── setup.sh                        # Project setup script
+├── skill/SKILL.md                  # Claude Code /brad skill
 ├── src/
 │   ├── cli.js                      # Command router + interactive REPL
 │   ├── core/
@@ -279,10 +445,9 @@ brad/
 │   └── config/
 │       ├── defaults.js
 │       └── prompts/
-│           └── reddit-persona.md   # Reddit engagement guidelines
-├── skill/
-│   └── SKILL.md                    # Claude Code /brad skill
+│           └── reddit-persona.md
 ├── .env.example
+├── LICENSE
 └── README.md
 ```
 
@@ -290,8 +455,6 @@ brad/
 
 ## License
 
-MIT
-
----
+MIT — see [LICENSE](LICENSE)
 
 Built by [Red Rooster Technologies](https://redroostertec.com)

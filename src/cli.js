@@ -63,6 +63,7 @@ function printHelp() {
     ${chalk.white('scout')}       Scout Reddit for engagement opportunities
     ${chalk.white('status')}      Show workspace status and recent activity
     ${chalk.white('exit')}        Exit Brad
+    ${chalk.white('exit')}        Exit Brad
 
   Or just type a question / instruction and Brad will figure it out.
   `));
@@ -632,6 +633,92 @@ export function cli(argv) {
       console.log(chalk.gray('  Run "brad init --site <url>" to start fresh.\n'));
     });
 
+  // ── update ─────────────────────────────────────────────────
+  program
+    .command('update')
+    .description('Update Brad to the latest version')
+    .action(async () => {
+      const { execSync } = await import('child_process');
+
+      // Find Brad's install directory (where this script lives)
+      const bradRoot = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+
+      console.log(banner(null));
+      console.log(chalk.gray(`  Brad install: ${bradRoot}\n`));
+
+      // Check if it's a git repo
+      try {
+        execSync('git rev-parse --is-inside-work-tree', { cwd: bradRoot, stdio: 'pipe' });
+      } catch {
+        console.log(chalk.red('  Brad was not installed from git. Update manually:\n'));
+        console.log(chalk.white('    cd ' + bradRoot));
+        console.log(chalk.white('    git pull && npm install\n'));
+        return;
+      }
+
+      // Get current version
+      const currentVersion = execSync('git rev-parse --short HEAD', { cwd: bradRoot, encoding: 'utf-8' }).trim();
+      console.log(chalk.gray(`  Current: ${currentVersion}`));
+
+      // Fetch latest
+      console.log(chalk.gray('  Fetching updates...'));
+      try {
+        execSync('git fetch', { cwd: bradRoot, stdio: 'pipe' });
+      } catch (err) {
+        console.log(chalk.red(`  Fetch failed: ${err.message}\n`));
+        return;
+      }
+
+      // Check if we're behind
+      const local = execSync('git rev-parse HEAD', { cwd: bradRoot, encoding: 'utf-8' }).trim();
+      let remote;
+      try {
+        remote = execSync('git rev-parse @{u}', { cwd: bradRoot, encoding: 'utf-8' }).trim();
+      } catch {
+        console.log(chalk.yellow('  No upstream branch configured.'));
+        console.log(chalk.gray('  Set one with: git push -u origin <branch>\n'));
+        return;
+      }
+
+      if (local === remote) {
+        console.log(chalk.green('  Already up to date.\n'));
+        return;
+      }
+
+      // Pull
+      console.log(chalk.gray('  Pulling latest...'));
+      try {
+        const pullOutput = execSync('git pull', { cwd: bradRoot, encoding: 'utf-8' });
+        console.log(chalk.gray('  ' + pullOutput.trim().split('\n')[0]));
+      } catch (err) {
+        console.log(chalk.red(`  Pull failed: ${err.message}`));
+        console.log(chalk.yellow('  You may have local changes. Resolve manually:\n'));
+        console.log(chalk.white(`    cd ${bradRoot}`));
+        console.log(chalk.white('    git stash && git pull && git stash pop\n'));
+        return;
+      }
+
+      // Install dependencies
+      console.log(chalk.gray('  Installing dependencies...'));
+      try {
+        execSync('npm install --silent', { cwd: bradRoot, stdio: 'pipe' });
+      } catch {
+        console.log(chalk.yellow('  npm install had warnings (probably fine).'));
+      }
+
+      // Re-link
+      console.log(chalk.gray('  Re-linking brad command...'));
+      try {
+        execSync('npm link --silent', { cwd: bradRoot, stdio: 'pipe' });
+      } catch {
+        // npm link sometimes warns, usually fine
+      }
+
+      const newVersion = execSync('git rev-parse --short HEAD', { cwd: bradRoot, encoding: 'utf-8' }).trim();
+      console.log(chalk.green(`\n  Updated: ${currentVersion} → ${newVersion}`));
+      console.log(chalk.gray(`  Brad v${VERSION}\n`));
+    });
+
   // ── config ─────────────────────────────────────────────────
   program
     .command('config')
@@ -690,14 +777,17 @@ export function cli(argv) {
       console.log(chalk.white('    brad read <file>    ') + chalk.gray('Read a specific finding'));
       console.log(chalk.white('    brad status         ') + chalk.gray('Show workspace overview'));
       console.log('');
-      console.log(chalk.bold('  Cleanup'));
-      console.log(chalk.white('    brad cleanse'));
-      console.log(chalk.gray('      Remove all Brad data (.brad/). Requires "yes" to confirm.'));
-      console.log('');
       console.log(chalk.bold('  Interactive'));
       console.log(chalk.white('    brad'));
       console.log(chalk.gray('      Launch interactive mode. Ask Brad anything — he has'));
       console.log(chalk.gray('      access to your site crawler, web search, and file tools.'));
+      console.log('');
+      console.log(chalk.bold('  Maintenance'));
+      console.log(chalk.white('    brad cleanse'));
+      console.log(chalk.gray('      Remove all Brad data (.brad/). Requires "yes" to confirm.'));
+      console.log('');
+      console.log(chalk.white('    brad update'));
+      console.log(chalk.gray('      Pull latest version, install deps, re-link command.'));
       console.log('');
       console.log(chalk.bold('  Environment'));
       console.log(chalk.gray('    ANTHROPIC_API_KEY   Required for anthropic provider'));
