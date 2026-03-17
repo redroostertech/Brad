@@ -339,6 +339,31 @@ In Claude Code, inside your project:
 | `BRAD_APPROVAL_MODE` | `require` or `auto` | `require` |
 | `BRAD_LOG_LEVEL` | `silent`, `normal`, `verbose` | `normal` |
 
+#### Google APIs (enriches SEO audits with real data)
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON key | `/path/to/service-account.json` |
+| `GSC_SITE_URL` | Site URL as registered in Search Console | `https://lanaai.io/` or `sc-domain:lanaai.io` |
+| `GA4_PROPERTY_ID` | **Numeric** GA4 property ID (not `G-XXXXXXX`) | `123456789` |
+
+**Setup steps:**
+
+1. **Service account**: Use an existing one (e.g., Firebase) or create one in [Google Cloud Console](https://console.cloud.google.com/iam-admin/serviceaccounts)
+2. **Enable APIs**: In Google Cloud Console → APIs & Services → Enable:
+   - "Google Search Console API"
+   - "Google Analytics Data API"
+3. **Grant access**:
+   - **GSC**: Search Console → Settings → Users → Add service account email as Full user
+   - **GA4**: GA4 → Admin → Property Access Management → Add service account email as Viewer
+4. **Find your GA4 numeric property ID**: GA4 → Admin → Property Settings → Property ID (a number, NOT the `G-XXXXXXX` measurement ID)
+
+When configured, `brad audit` enriches every page with:
+- **GSC**: Impressions, clicks, CTR, avg position, top queries, low-hanging fruit keywords
+- **GA4**: Page views, bounce rate, session duration, traffic sources (organic/direct/referral/social)
+
+When not configured, audits still work — suggestions are based on crawl data only.
+
 #### Platform APIs (for future posting)
 
 | Variable | Description |
@@ -400,6 +425,8 @@ In Claude Code, inside your project:
 
 ## How It Works
 
+### `brad init`
+
 ```
 brad init
   │
@@ -419,6 +446,27 @@ brad init
       ├── Merges scanner findings + LLM output
       ├── Saves config.json
       └── Saves brand-context.json
+```
+
+### `brad audit`
+
+```
+brad audit
+  │
+  ├── Phase 1: Crawl all pages (parallel fetch + cheerio)
+  │
+  ├── Phase 1.5: Enrich with analytics (if configured)
+  │   ├── Google Search Console → impressions, clicks, CTR, position, top queries
+  │   └── Google Analytics 4 → page views, bounce rate, session duration, traffic sources
+  │
+  ├── Phase 2+3: Sitemap check + competitive search (parallel)
+  │
+  ├── Phase 4: Analyze each page via LLM (batches of 4, parallel)
+  │   └── Each page gets: crawl data + GSC metrics + GA4 metrics
+  │
+  ├── Phase 5: Generate summary + action plan (LLM)
+  │
+  └── Phase 6: Assemble report (Node.js)
 ```
 
 ---
@@ -443,7 +491,10 @@ brad/
 │   │   ├── seo-auditor.js          # Page-by-page SEO audit
 │   │   └── site-analyzer.js        # Site crawl + config builder
 │   ├── tools/
+│   │   ├── analytics-enricher.js    # Merges GSC + GA4 data into page results
 │   │   ├── file-ops.js             # Read/write findings + project files
+│   │   ├── google-analytics.js     # GA4 Data API client
+│   │   ├── google-search-console.js# GSC API client
 │   │   ├── search.js               # DuckDuckGo web search
 │   │   └── web-crawler.js          # Cheerio page + site crawler
 │   └── config/
