@@ -12,7 +12,7 @@ export const crawlPage = tool(
     try {
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'Brad-CMO/0.1 (marketing-analysis)',
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml',
         },
         signal: AbortSignal.timeout(15000),
@@ -147,7 +147,7 @@ export const crawlSitemap = tool(
       for (const sitemapUrl of sitemapUrls) {
         try {
           const response = await fetch(sitemapUrl, {
-            headers: { 'User-Agent': 'Brad-CMO/0.1' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
             signal: AbortSignal.timeout(10000),
           });
 
@@ -224,7 +224,7 @@ export const crawlSite = tool(
       try {
         const response = await fetch(currentUrl, {
           headers: {
-            'User-Agent': 'Brad-CMO/0.1 (marketing-analysis)',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml',
           },
           signal: AbortSignal.timeout(10000),

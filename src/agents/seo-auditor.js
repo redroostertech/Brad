@@ -178,7 +178,7 @@ export async function runSEOAudit(llm, workspace, options = {}) {
     log(`  Crawling: ${url}`);
     try {
       const response = await fetch(url, {
-        headers: { 'User-Agent': 'Brad-CMO/0.1 (seo-audit)', 'Accept': 'text/html' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Accept': 'text/html' },
         signal: AbortSignal.timeout(15000),
       });
 
