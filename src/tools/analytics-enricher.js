@@ -176,29 +176,33 @@ function shapeGSCPage(pageRow, queryRows) {
  *                            bounceRate, organicTraffic, trafficSources }.
  * @returns {object} Shaped GA4 analytics object.
  */
-function shapeGA4Page(pageRow) {
+function shapeGA4Page(pageRow, trafficRow) {
   const {
     pageViews = 0,
     uniqueUsers = 0,
+    avgSessionDurationSec = 0,
     avgSessionDuration = 0,
     bounceRate = 0,
-    organicTraffic = 0,
-    trafficSources = {},
+    sessions = 0,
+    engagedSessions = 0,
   } = pageRow;
+
+  const duration = avgSessionDurationSec || avgSessionDuration;
+  const traffic = trafficRow || {};
 
   return {
     pageViews,
     uniqueUsers,
-    avgSessionDuration: typeof avgSessionDuration === 'number'
-      ? Number(avgSessionDuration.toFixed(1))
-      : 0,
+    avgSessionDuration: typeof duration === 'number' ? Number(duration.toFixed(1)) : 0,
     bounceRate: typeof bounceRate === 'number' ? Number(bounceRate.toFixed(4)) : 0,
-    organicTraffic,
+    sessions,
+    engagedSessions,
+    organicTraffic: traffic.organic ?? 0,
     trafficSources: {
-      organic: trafficSources.organic ?? organicTraffic,
-      direct: trafficSources.direct ?? 0,
-      referral: trafficSources.referral ?? 0,
-      social: trafficSources.social ?? 0,
+      organic: traffic.organic ?? 0,
+      direct: traffic.direct ?? 0,
+      referral: traffic.referral ?? 0,
+      social: traffic.social ?? 0,
     },
   };
 }
@@ -285,12 +289,16 @@ export async function enrichWithAnalytics(pageResults, config, log) {
     );
   }
 
+  /** @type {object[]|null} */
+  let ga4TrafficSources = null;
+
   if (hasGA4) {
     _log('Fetching GA4 data...');
     fetchPromises.push(
       fetchGA4Data(ga4PropertyId, { credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS })
         .then(result => {
           ga4Pages = result?.perPageMetrics ?? [];
+          ga4TrafficSources = result?.trafficSourcesPerPage ?? [];
           _log(`  GA4: received ${ga4Pages.length} page rows`);
         })
         .catch(err => {
@@ -308,6 +316,8 @@ export async function enrichWithAnalytics(pageResults, config, log) {
   const gscPageMap = gscPages ? buildPathMap(gscPages, 'url') : new Map();
   /** @type {Map<string, object>} */
   const ga4PageMap = ga4Pages ? buildPathMap(ga4Pages, 'pagePath') : new Map();
+  /** @type {Map<string, object>} */
+  const ga4TrafficMap = ga4TrafficSources ? buildPathMap(ga4TrafficSources, 'pagePath') : new Map();
 
   // ── Match and attach analytics to each page ────────────────────────────────
 
@@ -340,6 +350,7 @@ export async function enrichWithAnalytics(pageResults, config, log) {
 
     const gscRow = gscPageMap.get(path) ?? (prefixedPath ? gscPageMap.get(prefixedPath) : null);
     const ga4Row = ga4PageMap.get(path) ?? (prefixedPath ? ga4PageMap.get(prefixedPath) : null);
+    const trafficRow = ga4TrafficMap.get(path) ?? (prefixedPath ? ga4TrafficMap.get(prefixedPath) : null);
 
     // Only attach the analytics property when at least one source is available.
     if (!gscRow && !ga4Row) {
@@ -351,7 +362,7 @@ export async function enrichWithAnalytics(pageResults, config, log) {
         ? shapeGSCPage(gscRow, gscQueriesByPath?.get(path) ?? [])
         : null,
       ga4: ga4Row
-        ? shapeGA4Page(ga4Row)
+        ? shapeGA4Page(ga4Row, trafficRow)
         : null,
     };
 
