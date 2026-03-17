@@ -23,6 +23,7 @@ import { analyzeSite } from './agents/site-analyzer.js';
 import { runSEOAudit } from './agents/seo-auditor.js';
 import { scoutReddit } from './agents/reddit-agent.js';
 import { runCompetitiveAnalysis } from './agents/competitive-analysis.js';
+import { researchKeywords } from './tools/keyword-research.js';
 import { fork } from 'child_process';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
@@ -104,6 +105,7 @@ function printHelp() {
     ${chalk.white('config')}      Show current configuration
     ${chalk.white('findings')}    List all findings
     ${chalk.white('help')}        Show this help
+    ${chalk.white('keywords')}    Research keywords (autocomplete + PAA + related)
     ${chalk.white('read')} <file>  Read a specific finding
     ${chalk.white('scout')}       Scout Reddit for engagement opportunities
     ${chalk.white('status')}      Show workspace status and recent activity
@@ -227,6 +229,23 @@ async function interactiveMode(workspace) {
             const result = await runCompetitiveAnalysis(getLLM(), workspace, { log: compLog });
             console.log(chalk.green('\n  Competitive analysis complete.\n'));
             console.log(result.content + '\n');
+          } catch (err) {
+            console.log(chalk.red(`\n  Failed: ${err.message}\n`));
+          }
+          break;
+        }
+
+        case 'keywords':
+        case 'kw': {
+          const kwConfig = await workspace.loadConfig();
+          const kwSeeds = kwConfig.brand?.keywords?.primary?.slice(0, 5) || ['legal AI software'];
+          console.log(chalk.cyan(`\n  Researching: ${kwSeeds.join(', ')}...\n`));
+          try {
+            const kwResults = await researchKeywords(kwSeeds);
+            console.log(chalk.green(`\n  ${kwResults.totalKeywords} keywords found.`));
+            console.log(chalk.gray(`  ${kwResults.autocomplete.length} autocomplete, ${kwResults.questions.length} questions, ${kwResults.relatedSearches.length} related\n`));
+            kwResults.autocomplete.slice(0, 10).forEach(s => console.log(chalk.white(`  - ${s.suggestion}`)));
+            if (kwResults.autocomplete.length > 10) console.log(chalk.gray(`  ... and ${kwResults.autocomplete.length - 10} more\n`));
           } catch (err) {
             console.log(chalk.red(`\n  Failed: ${err.message}\n`));
           }
@@ -609,6 +628,81 @@ export function cli(argv) {
       console.log('\n' + content + '\n');
     });
 
+  // ── keywords ──────────────────────────────────────────────
+  program
+    .command('keywords')
+    .alias('kw')
+    .description('Research keywords — autocomplete, People Also Ask, related searches')
+    .option('-s, --seeds <keywords>', 'Comma-separated seed keywords (overrides config)')
+    .action(async (opts) => {
+      const workspace = new Workspace(process.cwd());
+      if (!await workspace.exists()) {
+        console.log(chalk.red('\n  No Brad workspace found. Run "brad init --site <url>" first.\n'));
+        return;
+      }
+
+      const config = await workspace.loadConfig();
+      let seeds;
+      if (opts.seeds) {
+        seeds = opts.seeds.split(',').map(s => s.trim());
+      } else {
+        seeds = config.brand?.keywords?.primary?.slice(0, 5) || [];
+        if (seeds.length === 0) {
+          console.log(chalk.red('\n  No keywords configured. Run with --seeds "keyword1, keyword2"\n'));
+          return;
+        }
+      }
+
+      console.log(chalk.bold.cyan(`\n  Researching keywords: ${seeds.join(', ')}...`));
+      console.log(chalk.gray('  Press ESC twice to abort.\n'));
+
+      const cleanup = enableAbort();
+      const log = createLogger();
+
+      try {
+        log(`Researching ${seeds.length} seed keywords...`);
+        const results = await researchKeywords(seeds, {
+          onProgress: (msg) => log(msg),
+        });
+
+        cleanup();
+
+        // Save as finding
+        const todayStr = new Date().toISOString().split('T')[0];
+        const report = [
+          `# Keyword Research — ${todayStr}`,
+          '',
+          `## Seeds: ${seeds.join(', ')}`,
+          '',
+          `## Autocomplete Suggestions (${results.autocomplete.length})`,
+          '',
+          ...results.autocomplete.map(s => `- **${s.suggestion}** _(from: "${s.source}")_`),
+          '',
+          `## People Also Ask (${results.questions.length})`,
+          '',
+          ...results.questions.map(q => `- ${q}`),
+          '',
+          `## Related Searches (${results.relatedSearches.length})`,
+          '',
+          ...results.relatedSearches.map(r => `- ${r}`),
+          '',
+          `---`,
+          `Total unique keywords discovered: **${results.totalKeywords}**`,
+        ].join('\n');
+
+        await workspace.saveFinding(`${todayStr}-keyword-research.md`, report);
+        await workspace.appendHistory({ action: 'keyword_research', seeds, totalKeywords: results.totalKeywords });
+
+        console.log('');
+        console.log(chalk.bold.green(`  Done. ${results.totalKeywords} keywords discovered.`));
+        console.log(chalk.gray(`  ${results.autocomplete.length} autocomplete, ${results.questions.length} questions, ${results.relatedSearches.length} related`));
+        console.log(chalk.gray(`  Saved to .brad/findings/${todayStr}-keyword-research.md\n`));
+      } catch (err) {
+        cleanup();
+        console.log(chalk.red(`\n  Keyword research failed: ${err.message}\n`));
+      }
+    });
+
   // ── read ───────────────────────────────────────────────────
   program
     .command('read <filename>')
@@ -803,6 +897,11 @@ export function cli(argv) {
       console.log(chalk.gray('      Deep competitive analysis — searches for competitors,'));
       console.log(chalk.gray('      crawls their sites, compares positioning and SEO.'));
       console.log(chalk.gray('      Use --bg to run in background.'));
+      console.log('');
+      console.log(chalk.white('    brad keywords'));
+      console.log(chalk.gray('      Research keywords via Google Autocomplete, People Also'));
+      console.log(chalk.gray('      Ask, and Related Searches. No API key needed.'));
+      console.log(chalk.gray('      Use --seeds "kw1, kw2" to override config keywords.'));
       console.log('');
       console.log(chalk.white('    brad scout'));
       console.log(chalk.gray('      Scout Reddit for engagement opportunities.'));
