@@ -66,15 +66,27 @@ const PAGE_ANALYSIS_PROMPT = (pageData, siteUrl, brandContext, config, allPageUr
   const competitors = config?.brand?.competitors || [];
   const bodyPreview = pageData.bodyTextPreview || '';
 
-  // Pre-compute keyword presence so we can tell the LLM exactly what's missing
+  // Pre-compute keyword presence — use full body text, not just preview
   const allKeywords = [...primaryKeywords, ...secondaryKeywords];
-  const bodyLower = bodyPreview.toLowerCase();
+  const fullBodyLower = (pageData.fullBodyText || bodyPreview).toLowerCase();
   const titleLower = (pageData.meta?.title || '').toLowerCase();
   const h1Text = (pageData.headings?.find(h => h.level === 'h1')?.text || '').toLowerCase();
-  const keywordsInBody = allKeywords.filter(k => bodyLower.includes(k.toLowerCase()));
-  const keywordsMissing = allKeywords.filter(k => !bodyLower.includes(k.toLowerCase()));
+  const headingsText = (pageData.headings || []).map(h => h.text.toLowerCase()).join(' ');
+
+  // Check each keyword: exact match first, then check individual words for partial coverage
+  const keywordsInBody = allKeywords.filter(k => {
+    const kl = k.toLowerCase();
+    if (fullBodyLower.includes(kl)) return true;
+    // Partial: if all significant words of the keyword appear in body
+    const words = kl.split(/\s+/).filter(w => w.length > 2);
+    return words.length > 1 && words.every(w => fullBodyLower.includes(w));
+  });
+  const keywordsMissing = allKeywords.filter(k => !keywordsInBody.includes(k));
   const keywordsInTitle = primaryKeywords.filter(k => titleLower.includes(k.toLowerCase()));
-  const keywordsInH1 = primaryKeywords.filter(k => h1Text.includes(k.toLowerCase()));
+  const keywordsInH1 = primaryKeywords.filter(k => {
+    const kl = k.toLowerCase();
+    return h1Text.includes(kl) || headingsText.includes(kl);
+  });
 
   // Determine page type for schema recommendation
   const urlPath = (pageData.url || '').split('/').pop() || 'home';
@@ -293,12 +305,10 @@ export async function runSEOAudit(llm, workspace, options = {}) {
 
   log(`Auditing ${site.name} — ${pageUrls.length} pages to analyze`);
 
-  // ── Phase 1: Crawl every page ──────────────────────────────
-  log('Phase 1: Crawling all pages...');
-  const pageResults = [];
+  // ── Phase 1: Crawl every page (parallel) ───────────────────
+  log('Phase 1: Crawling all pages in parallel...');
 
-  for (const url of pageUrls) {
-    log(`  Crawling: ${url}`);
+  async function crawlOnePage(url) {
     try {
       const response = await fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Accept': 'text/html' },
@@ -306,9 +316,8 @@ export async function runSEOAudit(llm, workspace, options = {}) {
       });
 
       if (!response.ok) {
-        log(`  ⚠ ${url} returned HTTP ${response.status}`);
-        pageResults.push({ url, error: `HTTP ${response.status}` });
-        continue;
+        log(`  ⚠ ${url} — HTTP ${response.status}`);
+        return { url, error: `HTTP ${response.status}` };
       }
 
       const html = await response.text();
@@ -355,85 +364,90 @@ export async function runSEOAudit(llm, workspace, options = {}) {
         try { jsonLd.push(JSON.parse($(el).html())); } catch { /* skip */ }
       });
 
-      pageResults.push({
+      log(`  ✓ ${url}`);
+      return {
         url,
         meta,
         headings,
         links: { internal: internalLinks.length, external: externalLinks.length },
         images,
         bodyTextLength: bodyText.length,
-        bodyTextPreview: bodyText.substring(0, 1500),
+        bodyTextPreview: bodyText.substring(0, 2000),
+        fullBodyText: bodyText,
         jsonLd,
-      });
-
-      log(`  ✓ ${url} (${meta.title.substring(0, 50)}...)`);
+      };
     } catch (err) {
       log(`  ⚠ ${url}: ${err.message}`);
-      pageResults.push({ url, error: err.message });
+      return { url, error: err.message };
     }
   }
 
-  // ── Phase 2: Crawl sitemap ─────────────────────────────────
-  log('Phase 2: Checking sitemap...');
-  let sitemapData = 'No sitemap found';
-  try {
-    const fileTools = createFileTools(workspace);
-    const sitemapAgent = createBradAgent(llm, [crawlSitemap], {});
-    const sitemapResult = await runAgent(
-      sitemapAgent,
-      `Crawl the sitemap at ${site.url}. Return the raw results.`,
-      { onToolCall: (n, a) => log(`  Checking: ${a.url || site.url}`), onToolResult: () => {} }
-    );
-    sitemapData = sitemapResult.content;
-  } catch (err) {
-    log(`  Sitemap check failed: ${err.message}`);
-  }
+  const pageResults = await Promise.all(pageUrls.map(crawlOnePage));
 
-  // ── Phase 3: Competitive search ────────────────────────────
-  log('Phase 3: Competitive search...');
-  const keywords = config?.brand?.keywords?.primary?.slice(0, 3) || ['legal AI software'];
-  let competitiveData = '';
+  // ── Phase 2+3: Sitemap + competitive search (parallel) ─────
+  log('Phase 2+3: Sitemap check + competitive search (parallel)...');
 
-  for (const kw of keywords) {
-    log(`  Searching: "${kw}"`);
+  const sitemapPromise = (async () => {
     try {
-      const encodedQuery = encodeURIComponent(kw);
-      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodedQuery}`;
-      const response = await fetch(searchUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
-        signal: AbortSignal.timeout(10000),
-      });
-      const html = await response.text();
-      const { load } = await import('cheerio');
-      const $ = load(html);
-      const results = [];
-      $('.result').each((_, el) => {
-        if (results.length >= 5) return;
-        const title = $(el).find('.result__a').text().trim();
-        const snippet = $(el).find('.result__snippet').text().trim();
-        const resultUrl = $(el).find('.result__url').text().trim();
-        if (title) results.push({ title, snippet, url: resultUrl });
-      });
-      competitiveData += `\n### Search: "${kw}"\n`;
-      results.forEach((r, i) => {
-        competitiveData += `${i + 1}. ${r.title} — ${r.url}\n   "${r.snippet}"\n`;
-      });
+      log('  Checking sitemap...');
+      const sitemapAgent = createBradAgent(llm, [crawlSitemap], {});
+      const sitemapResult = await runAgent(
+        sitemapAgent,
+        `Crawl the sitemap at ${site.url}. Return the raw results.`,
+        { onToolCall: (n, a) => log(`  Sitemap: ${a.url || site.url}`), onToolResult: () => {} }
+      );
+      return sitemapResult.content;
     } catch (err) {
-      competitiveData += `\n### Search: "${kw}"\nFailed: ${err.message}\n`;
+      log(`  Sitemap check failed: ${err.message}`);
+      return 'No sitemap found';
     }
-  }
+  })();
 
-  // ── Phase 4: Analyze each page individually via LLM ────────
-  log(`Phase 4: Analyzing ${pageResults.filter(p => !p.error).length} pages (one at a time)...`);
-  const pageAnalyses = [];
-  const allPageUrls = pageResults.filter(p => !p.error).map(p => p.url);
-
-  for (const page of pageResults) {
-    if (page.error) {
-      pageAnalyses.push(`### ${page.url}\n**Error:** ${page.error} — page could not be crawled.\n\n---\n`);
-      continue;
+  const competitivePromise = (async () => {
+    const keywords = config?.brand?.keywords?.primary?.slice(0, 3) || ['legal AI software'];
+    let data = '';
+    for (const kw of keywords) {
+      log(`  Searching: "${kw}"`);
+      try {
+        const encodedQuery = encodeURIComponent(kw);
+        const searchUrl = `https://html.duckduckgo.com/html/?q=${encodedQuery}`;
+        const response = await fetch(searchUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+          signal: AbortSignal.timeout(10000),
+        });
+        const html = await response.text();
+        const { load } = await import('cheerio');
+        const $ = load(html);
+        const results = [];
+        $('.result').each((_, el) => {
+          if (results.length >= 5) return;
+          const title = $(el).find('.result__a').text().trim();
+          const snippet = $(el).find('.result__snippet').text().trim();
+          const resultUrl = $(el).find('.result__url').text().trim();
+          if (title) results.push({ title, snippet, url: resultUrl });
+        });
+        data += `\n### Search: "${kw}"\n`;
+        results.forEach((r, i) => {
+          data += `${i + 1}. ${r.title} — ${r.url}\n   "${r.snippet}"\n`;
+        });
+      } catch (err) {
+        data += `\n### Search: "${kw}"\nFailed: ${err.message}\n`;
+      }
     }
+    return data;
+  })();
 
+  const [sitemapData, competitiveData] = await Promise.all([sitemapPromise, competitivePromise]);
+
+  // ── Phase 4: Analyze pages via LLM (parallel batches of 4) ─
+  const validPages = pageResults.filter(p => !p.error);
+  const errorPages = pageResults.filter(p => p.error);
+  const allPageUrls = validPages.map(p => p.url);
+  const BATCH_SIZE = 4;
+
+  log(`Phase 4: Analyzing ${validPages.length} pages (${BATCH_SIZE} at a time)...`);
+
+  async function analyzePage(page) {
     log(`  Analyzing: ${page.url}`);
     try {
       const result = await llm.invoke([
@@ -441,13 +455,29 @@ export async function runSEOAudit(llm, workspace, options = {}) {
         { role: 'user', content: PAGE_ANALYSIS_PROMPT(page, site.url, brandContext, config, allPageUrls) },
       ]);
       const content = typeof result.content === 'string' ? result.content : result.content?.[0]?.text || '';
-      pageAnalyses.push(content.trim());
       log(`  ✓ Done: ${page.url}`);
+      return { url: page.url, analysis: content.trim() };
     } catch (err) {
       log(`  ⚠ Analysis failed for ${page.url}: ${err.message}`);
-      pageAnalyses.push(`### ${page.url}\n**Analysis failed:** ${err.message}\n\n---\n`);
+      return { url: page.url, analysis: `### ${page.url}\n**Analysis failed:** ${err.message}\n\n---\n` };
     }
   }
+
+  // Process in batches of BATCH_SIZE
+  const analysisResults = [];
+  for (let i = 0; i < validPages.length; i += BATCH_SIZE) {
+    const batch = validPages.slice(i, i + BATCH_SIZE);
+    log(`  Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(validPages.length / BATCH_SIZE)} (${batch.length} pages)...`);
+    const batchResults = await Promise.all(batch.map(analyzePage));
+    analysisResults.push(...batchResults);
+  }
+
+  // Assemble in original URL order + error pages
+  const pageAnalysisMap = new Map(analysisResults.map(r => [r.url, r.analysis]));
+  const pageAnalyses = pageResults.map(page => {
+    if (page.error) return `### ${page.url}\n**Error:** ${page.error} — page could not be crawled.\n\n---\n`;
+    return pageAnalysisMap.get(page.url) || `### ${page.url}\n**Analysis missing**\n\n---\n`;
+  });
 
   // ── Phase 5: Generate summary ──────────────────────────────
   log('Phase 5: Generating summary...');
