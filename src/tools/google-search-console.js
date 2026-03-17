@@ -217,24 +217,9 @@ async function buildPerPageMetrics(sc, siteUrl) {
  * @property {number} position
  */
 async function buildLowHangingFruit(sc, siteUrl) {
-  const rows = await querySearchAnalytics(sc, siteUrl, ['query', 'page'], 25000, {
-    dimensionFilterGroups: [
-      {
-        filters: [
-          {
-            dimension: 'position',
-            operator: 'greaterThanEquals',
-            expression: '8',
-          },
-          {
-            dimension: 'position',
-            operator: 'lessThanEquals',
-            expression: '20',
-          },
-        ],
-      },
-    ],
-  });
+  // GSC API doesn't support position-based filtering server-side.
+  // Fetch all query+page rows and filter client-side.
+  const rows = await querySearchAnalytics(sc, siteUrl, ['query', 'page'], 25000);
 
   return rows
     .filter((row) => {
