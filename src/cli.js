@@ -586,13 +586,27 @@ export function cli(argv) {
       const findings = await workspace.listFindings();
       if (findings.length === 0) {
         console.log(chalk.gray('\n  No findings yet. Run "brad audit" or "brad scout".\n'));
-      } else {
-        console.log('');
-        for (const f of findings) {
-          console.log(chalk.white(`  ${f}`));
-        }
-        console.log(chalk.gray(`\n  Run: brad read <filename>\n`));
+        return;
       }
+
+      // Interactive selector
+      const { default: inquirerSelect } = await import('@inquirer/select');
+      const choices = findings.map((f, i) => ({
+        name: f,
+        value: f,
+      }));
+
+      console.log('');
+      const selected = await inquirerSelect({
+        message: 'Select a finding to read:',
+        choices,
+        theme: {
+          prefix: '  ',
+        },
+      });
+
+      const content = await workspace.readFinding(selected);
+      console.log('\n' + content + '\n');
     });
 
   // ── read ───────────────────────────────────────────────────
