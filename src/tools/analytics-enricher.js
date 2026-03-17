@@ -11,7 +11,7 @@
  *   // then pass enrichedPages to PAGE_ANALYSIS_PROMPT, calling formatAnalyticsForPrompt(page.analytics)
  */
 
-import { fetchGSCData } from './google-search-console.js';
+import { fetchSearchConsoleData } from './google-search-console.js';
 import { fetchGA4Data } from './google-analytics.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -238,8 +238,8 @@ export async function enrichWithAnalytics(pageResults, config, log) {
 
   // Extract analytics config from the first configured site.
   const analyticsConfig = config?.sites?.[0]?.analytics ?? {};
-  const gscProperty = analyticsConfig.gsc_property ?? analyticsConfig.gsc ?? null;
-  const ga4PropertyId = analyticsConfig.ga4_prod ?? analyticsConfig.ga4 ?? null;
+  const gscProperty = analyticsConfig.gsc_site_url ?? analyticsConfig.gsc_property ?? analyticsConfig.gsc ?? process.env.GSC_SITE_URL ?? null;
+  const ga4PropertyId = analyticsConfig.ga4_property_id ?? process.env.GA4_PROPERTY_ID ?? null;
 
   const hasGSC = Boolean(gscProperty);
   const hasGA4 = Boolean(ga4PropertyId);
@@ -263,7 +263,7 @@ export async function enrichWithAnalytics(pageResults, config, log) {
   if (hasGSC) {
     _log('Fetching GSC data...');
     fetchPromises.push(
-      fetchGSCData({ property: gscProperty, config })
+      fetchSearchConsoleData(gscProperty, { credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS })
         .then(result => {
           gscPages = result.pages ?? [];
           // result.queries is expected to be an array of { pagePath, query, impressions, clicks, ctr, position }
@@ -289,7 +289,7 @@ export async function enrichWithAnalytics(pageResults, config, log) {
   if (hasGA4) {
     _log('Fetching GA4 data...');
     fetchPromises.push(
-      fetchGA4Data({ propertyId: ga4PropertyId, config })
+      fetchGA4Data(ga4PropertyId, { credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS })
         .then(result => {
           ga4Pages = result.pages ?? [];
           _log(`  GA4: received ${ga4Pages.length} page rows`);
