@@ -304,7 +304,10 @@ export function cli(argv) {
   program
     .name('brad')
     .description('B.R.A.D. — Brand Reach Automation & Distribution')
-    .version(VERSION);
+    .version(VERSION)
+    .hook('preAction', () => {
+      console.log(banner(null));
+    });
 
   // ── init ───────────────────────────────────────────────────
   program
@@ -332,8 +335,6 @@ export function cli(argv) {
 
       // Workspace exists but no brand context — resume from analysis
       const resuming = alreadyExists && !brandContext;
-
-      console.log(banner(null));
 
       if (!alreadyExists) {
         const initSpinner = ora({ text: 'Creating workspace...', indent: 2 }).start();
@@ -569,7 +570,6 @@ export function cli(argv) {
         console.log(chalk.red('\n  No Brad workspace found. Run "brad init --site <url>" first.\n'));
         return;
       }
-      console.log(banner(workspace));
       await showStatus(workspace);
     });
 
@@ -682,7 +682,6 @@ export function cli(argv) {
       // Find Brad's install directory (where this script lives)
       const bradRoot = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 
-      console.log(banner(null));
       console.log(chalk.gray(`  Brad install: ${bradRoot}\n`));
 
       // Check if it's a git repo
@@ -777,7 +776,6 @@ export function cli(argv) {
     .command('help')
     .description('Show what Brad can do')
     .action(() => {
-      console.log(banner(null));
       console.log(chalk.bold('  Setup'));
       console.log('');
       console.log(chalk.white('    brad init --site <url> --name <name>'));
