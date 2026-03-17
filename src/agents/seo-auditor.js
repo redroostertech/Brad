@@ -14,16 +14,24 @@ function todayStr() {
 
 function derivePageUrls(siteUrl, config) {
   const focus = config?.focus || [];
+  const siteName = config?.sites?.[0]?.name || '';
 
-  // Look for page templates in the site's views directory
-  // Prefer lana-ai specific paths, fall back to any views/*/pages/
-  const siteSlug = new URL(siteUrl).hostname.split('.')[0]; // e.g., "lanaai"
+  // Build a slug from the site name: "Lana AI" → "lana-ai"
+  const siteSlug = siteName.toLowerCase().replace(/\s+/g, '-');
+
+  // Only include pages from the product's own views directory
+  // e.g., views/lana-ai/pages/ for "Lana AI"
+  const seen = new Set();
   const pageFiles = focus.filter(f => {
     if (!f.includes('/pages/') || !f.endsWith('.ejs') || f.includes(' copy')) return false;
-    // Prefer product-specific view dirs (lana-ai, forge, etc.)
-    // Skip generic views/pages/ which is a different product
+    // Must be in the product's view dir (views/lana-ai/) not views/pages/ or views/forge/
     const dir = f.split('/pages/')[0];
-    return dir !== 'views';
+    if (siteSlug && !dir.includes(siteSlug)) return false;
+    if (dir === 'views') return false;
+    // Deduplicate
+    if (seen.has(f)) return false;
+    seen.add(f);
+    return true;
   });
 
   if (pageFiles.length === 0) {
