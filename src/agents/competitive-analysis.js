@@ -222,14 +222,21 @@ export async function runCompetitiveAnalysis(llm, workspace, options = {}) {
   const brandContext = await workspace.loadBrandContext();
   const differentiators = config?.brand?.differentiators || [];
   const primaryKeywords = config?.brand?.keywords?.primary || ['legal AI software'];
+  const knownCompetitors = config?.brand?.competitors || [];
 
   // ── Phase 1: Search for competitors (parallel) ─────────────
   const searchQueries = [
     ...primaryKeywords.slice(0, 5),
     `best ${primaryKeywords[0]} 2026`,
     `alternatives to ${site.name}`,
-    `${site.name} vs`,
+    `${site.name} legal AI vs`,
   ];
+
+  // Also search for known competitors from config
+  for (const comp of knownCompetitors.slice(0, 5)) {
+    const name = comp.replace(/\s*\(.*\)/, '').trim(); // Strip "(Thomson Reuters)" etc.
+    searchQueries.push(`${name} legal AI`);
+  }
 
   log(`Phase 1: Searching ${searchQueries.length} queries in parallel...`);
   const allResults = (await Promise.all(
@@ -241,8 +248,28 @@ export async function runCompetitiveAnalysis(llm, workspace, options = {}) {
   log(`  Found ${allResults.length} total results`);
 
   // ── Phase 2: Identify top competitors (Node.js) ────────────
-  log('Phase 2: Identifying top competitors...');
+  log('Phase 2: Identifying top competitors from search results + config...');
   const competitors = identifyCompetitors(allResults, site.name);
+
+  // Ensure known competitors from config are included even if not found in search
+  for (const comp of knownCompetitors) {
+    const name = comp.replace(/\s*\(.*\)/, '').trim();
+    const nameLower = name.toLowerCase();
+    const alreadyFound = competitors.some(c =>
+      c.domain.includes(nameLower.replace(/\s+/g, '')) || c.name.toLowerCase().includes(nameLower)
+    );
+    if (!alreadyFound && competitors.length < 8) {
+      // Try to derive a URL from the name
+      const slug = name.toLowerCase().replace(/\s+/g, '');
+      competitors.push({
+        domain: `${slug}.com`,
+        name: name,
+        queries: ['config: known competitor'],
+        appearances: 0,
+        crawlUrl: `https://${slug}.com`,
+      });
+    }
+  }
   log(`  Top ${competitors.length} competitors: ${competitors.map(c => c.domain).join(', ')}`);
 
   if (competitors.length === 0) {
@@ -305,7 +332,12 @@ export async function runCompetitiveAnalysis(llm, workspace, options = {}) {
     `# Competitive Analysis — ${site.name} — ${todayStr()}`,
     '',
     `## Competitors Analyzed (${successful.length})`,
-    ...successful.map(c => `- **${c.name}** — ${c.crawlUrl} (found in ${c.appearances} searches)`),
+    ...successful.map(c => {
+      // Use crawled title for company name if available (cleaner than search result title)
+      const displayName = c.crawl?.title?.split(' - ')[0]?.split(' | ')[0]?.trim() || c.name;
+      const source = c.appearances > 0 ? `found in ${c.appearances} searches` : 'from config';
+      return `- **${displayName}** — ${c.crawlUrl} (${source})`;
+    }),
     ...crawledCompetitors.filter(c => c.error).map(c => `- ⚠ ${c.domain} — failed: ${c.error}`),
     '',
     '## Search Landscape',
