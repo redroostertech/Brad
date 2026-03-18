@@ -57,6 +57,46 @@ function derivePageUrls(siteUrl, config) {
   }).filter(Boolean);
 }
 
+// ── Analytics prompt section builder ─────────────────────────────
+
+function buildAnalyticsPromptSection(pageData) {
+  const parts = [];
+
+  if (pageData.analytics?.ga4) {
+    const ga4 = pageData.analytics.ga4;
+    const br = (ga4.bounceRate * 100).toFixed(0);
+    const dur = Math.round(ga4.avgSessionDuration);
+    const ts = ga4.trafficSources;
+    parts.push('**Traffic & Engagement Analysis (from GA4):**');
+    parts.push('- Page views: ' + ga4.pageViews + ' | Unique users: ' + ga4.uniqueUsers + ' (last 90 days)');
+    parts.push('- Bounce rate: ' + br + '%. [Is this high or low for this page type? What does it indicate about content quality or user intent match?]');
+    parts.push('- Avg session duration: ' + dur + 's. [Is this good? What does it say about engagement?]');
+    parts.push('- Traffic sources: ' + ts.organic + ' organic, ' + ts.direct + ' direct, ' + ts.referral + ' referral, ' + ts.social + ' social');
+    parts.push('- [Is this page getting enough organic traffic? If organic is 0 or very low, what is the likely reason and how to fix it?]');
+    parts.push('- [Which traffic sources should be improved and how?]');
+    parts.push('');
+  }
+
+  if (pageData.analytics?.gsc) {
+    const gsc = pageData.analytics.gsc;
+    const ctr = (gsc.ctr * 100).toFixed(2);
+    parts.push('**Search Performance (from GSC):**');
+    parts.push('- Impressions: ' + gsc.impressions + ' | Clicks: ' + gsc.clicks + ' | CTR: ' + ctr + '% | Avg Position: ' + gsc.avgPosition);
+    parts.push('- [Is the CTR good for this position? Compare to expected CTR benchmarks.]');
+    parts.push('- [If position is 8-20, what specific changes would push this to page 1?]');
+    if (gsc.topQueries?.length > 0) {
+      parts.push('- Top queries: ' + gsc.topQueries.map(q => q.query).join(', '));
+    }
+    if (gsc.lowHangingFruit?.length > 0) {
+      parts.push('- Low-hanging fruit: ' + gsc.lowHangingFruit.map(q => '"' + q.query + '" at pos ' + q.position).join(', '));
+    }
+    parts.push('');
+  }
+
+  if (parts.length === 0) return '';
+  return parts.join('\n');
+}
+
 // ── Single-page analysis prompt ──────────────────────────────────
 
 const PAGE_ANALYSIS_PROMPT = (pageData, siteUrl, brandContext, config, allPageUrls) => {
@@ -199,6 +239,7 @@ ${allPageUrls.map(u => `- ${u}`).join('\n')}
 - JSON-LD: ${pageData.jsonLd?.length > 0 ? 'present' : `MISSING — should have: ${recommendedSchema}`}
 - [Any other technical issues visible in the markup?]
 
+${buildAnalyticsPromptSection(pageData)}
 **Page-Specific Suggestions:**
 1. **[Specific action]** — Why: [explain the SEO impact with specifics, e.g., "Pages with FAQ schema see 2-3x more SERP real estate"]. Impact: [what metric improves]. Implementation: [exact steps].
 2. **[Specific action]** — Why: [specifics]. Impact: [metric]. Implementation: [steps].
